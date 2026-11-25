@@ -9,7 +9,7 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.6';
+const EDITOR_VER = 'v1.7';
 import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas } from './newslot.js';
 import { parseSarc as parseSarcM } from './sarc.js';
 import { generate, toWorld, applySections, DEFAULTS as TC_DEFAULTS, DEFAULT_POINTS, LOCK_AFTER, LOCK_BEFORE, SURF } from './trackgen.js';
@@ -1507,10 +1507,17 @@ function qcDecoPreview(group, fences, glides, signs, panels) {
   const pm = new THREE.MeshBasicMaterial({ color: 0x3a7bff }); for (const [p, yaw] of panels) { const m = new THREE.Mesh(GEO.box, pm); m.position.copy(V(p)); m.rotation.y = yaw; m.scale.set(0.8, 0.05, 0.6); group.add(m); }
 }
 
-function qcCreate() {
-  if (TC.active) { const plan = qcPlan(); if (!plan) return toast('Draw a guide along your road first.', 'err'); return tcApplyQC(plan); }
+// just the edge guides (floating arrows and barriers, fences): added to what's there, everything else left as it is
+function qcGuidesOnly(plan) {
+  const deco = plan.deco.filter(d => d.float || d.fence);
+  return deco.length ? { ...plan, lap: [], routes: [], items: [], starts: [], glides: [], panels: [], deco, fenceCol: plan.fenceCol, guidesOnly: true } : null;
+}
+function qcCreate(onlyGuides) {
+  onlyGuides = onlyGuides === true;
+  let plan = qcPlan(); if (!plan) return toast(TC.active ? 'Draw a guide along your road first.' : 'Draw a guide first, or use the lap path.', 'err');
+  if (onlyGuides) { plan = qcGuidesOnly(plan); if (!plan) return toast('No edge guides here: pick points and set their Edge guides (left, right or both) first.', 'err'); }
+  if (TC.active) return onlyGuides ? tcAddGuides(plan) : tcApplyQC(plan);
   if (!S.doc) return;
-  const plan = qcPlan(); if (!plan) return toast('Draw a guide first, or use the lap path.', 'err');
   pushUndo();
   const d = S.doc; d.Rails = d.Rails || []; d.Actors = d.Actors || [];
   // templates from this course when it has them, so new things carry the same fields as the game's own
@@ -1575,7 +1582,7 @@ function qcCreate() {
   for (const g of plan.glides) makeRail('GlidePath', glideGy, g, 20, (pt, n) => { pt.RectSize = [f32(n.rs[0]), f32(n.rs[1])]; pt.RectOffset = [0, 0]; });
   QC.ghost.clear();
   afterStructureChange([]);
-  toast(`Created: ${$('#qc_sum').textContent}. Ctrl+Z undoes it all.` + (plan.panels.length ? ' (A glide panel added as an object only starts a glide if the course\'s collision has one there: on your own tracks, use Quick Create in the Track Creator, which builds it into the model.)' : ''), 'ok', 9000);
+  toast((plan.guidesOnly ? `Added ${plan.deco.length} edge guides (nothing else changed).` : `Created: ${$('#qc_sum').textContent}.`) + ' Ctrl+Z undoes it all.' + (plan.panels.length ? ' (A glide panel added as an object only starts a glide if the course\'s collision has one there: on your own tracks, use Quick Create in the Track Creator, which builds it into the model.)' : ''), 'ok', 9000);
   $('#qcpanel').open = false; QC.drawGroup.clear(); QC.guide = []; drawGuide();
 }
 
@@ -1592,7 +1599,8 @@ qv('parch').onchange = () => qcPointSet('arch', Math.max(2, +qv('parch').value |
 qv('ppanel').onchange = () => qcPointSet('panel', qv('ppanel').checked);
 qv('pprops').onchange = () => qcPointSet('props', qv('pprops').checked);
 qcPointUI();
-$('#qc_create').onclick = qcCreate;
+$('#qc_create').onclick = () => qcCreate(false);
+$('#qc_guides').onclick = () => qcCreate(true);
 $('#qc_close').onclick = () => $('#quick').click();
 $('#qcpanel').addEventListener('input', e => { if (/^qc_p(w|fence|glide|arch|panel|props)$/.test(e.target.id)) return; if (e.target.id === 'qc_closed') QC.closed = e.target.checked; drawGuide(); qcPreview(); });
 
@@ -3594,6 +3602,17 @@ $('#tc_grid').onclick = () => { const g = startGridObj(); download(new TextEncod
 // ---------------------------------------------------------------- Track Creator: Quick Create on an imported model
 // The Quick Create panel works here too: draw the guide on your model and Create lays out the lap path,
 // CPU routes, item boxes and start grid; the Track Creator keeps them and builds them into the course.
+function tcAddGuides(plan) {
+  const P = v => [Math.fround(v.x), Math.fround(v.y), Math.fround(v.z)];
+  if (TC.qc) tcEPush();
+  const q = TC.qc || { closed: plan.closed, width: plan.width, routePct: plan.routePct, lap: [], routes: [], items: [], starts: [] };
+  q.deco = [...(q.deco || []), ...plan.deco.map(d => ({ name: d.name, pos: P(d.p), yaw: d.yaw }))];
+  q.fenceCol = [...(q.fenceCol || []), ...plan.fenceCol.map(([a, b]) => [P(a), P(b)])];
+  TC.qc = q; tcSave();
+  QC.ghost.clear(); QC.drawGroup.clear(); QC.guide = []; QC.ps = []; QC.sel.clear(); drawGuide(); qcPointUI();
+  tcUpdate();
+  toast(`Added ${plan.deco.length} edge guide${plan.deco.length > 1 ? 's' : ''}; your paths, items and start grid are as they were. Draw another guide to add more.`, 'ok');
+}
 function tcApplyQC(plan) {
   const P = v => [Math.fround(v.x), Math.fround(v.y), Math.fround(v.z)];
   const q = { closed: plan.closed, width: plan.width, routePct: plan.routePct,

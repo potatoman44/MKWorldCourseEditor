@@ -108,7 +108,7 @@ dialog::backdrop { background:#000a; }
 </head>
 <body>
 <div id="top">
-  <div class="brand" title="Version 1.6: Quick Create edge guides can be floating arrows and barriers">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.6</span></div>
+  <div class="brand" title="Version 1.7: Quick Create can add just the edge guides">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.7</span></div>
   <div class="menu" id="filemenu"><button id="filebtn" title="Open your dump, open a course file, save your edits as a mod">File ▾</button>
     <div class="menupop">
       <button id="openRomfs" title="The game's romfs folder from your dump">Open RomFS…</button><button id="openBase" title="Optional: the base game's romfs (version 1.0). An update's romfs only has the files that changed, so objects whose models never changed (most open-world scenery, like the Toad houses) need the base game's files to show their models.">Base game…</button>
@@ -310,7 +310,7 @@ dialog::backdrop { background:#000a; }
       <div class="qrow"><span></span><span>per row</span><input id="qc_itemPer" type="number" value="4" min="1" max="8"><span>first at</span><input id="qc_itemFirst" type="number" value="150" min="0" style="width:56px"></div>
       <div class="qrow"><label class="qck"><input type="checkbox" id="qc_doStart">Start grid</label><span>karts</span><input id="qc_startCount" type="number" value="24" min="1" max="24"><span></span><label class="qck rep"><input type="checkbox" id="qc_repStart" checked>replace</label></div>
       <div id="qc_sum" class="hint" style="margin:8px 0"></div>
-      <div class="qbtns"><button id="qc_create" class="hot">Create</button></div>
+      <div class="qbtns"><button id="qc_create" class="hot">Create</button><button id="qc_guides" title="Adds only the edge guides (floating arrows and barriers, or fences) along this guide line, on top of what's there: your lap path, routes, items, start grid and earlier guides stay as they are. Draw a guide just where you want them.">Add just the guides</button></div>
       </div>
     </details>
     <div id="legend"></div>
