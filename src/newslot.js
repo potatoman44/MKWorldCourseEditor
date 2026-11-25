@@ -564,8 +564,8 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
     delete r.LapNum; delete r.ForceUseTime; delete r.DefaultTimeAttackTime; r.DefaultRaceTime = 3;
     if (spec.hour !== undefined && spec.hour !== null) { r.ForceUseTime = true; r.DefaultRaceTime = spec.hour; r.DefaultTimeAttackTime = spec.hour; }   // a fixed time of day, like Rainbow Road's night
     if (spec.laps && spec.laps !== 3) r.LapNum = T.i32(spec.laps);
-    // in the open world it's set up like the game's own world courses: their lighting and weather (Rainbow Road's, the template, turns those off for space)
-    if (worldScene) { delete r.WorldTransformParentActor; r.WorldTransformParentFile = worldScene; r.AudienceType = 'NoFile'; delete r.IsForbidEnvirionmentalEffect; } }));
+    // (IsForbidEnvirionmentalEffect, from Rainbow Road, stays on: without it the weather effects drew diagonal streaks over imported tracks' walls)
+    if (worldScene) { delete r.WorldTransformParentActor; r.WorldTransformParentFile = worldScene; r.AudienceType = 'NoFile'; } }));
   // where the world starts loading in: the start line (Rainbow Road's is up in the sky)
   add.set(`Gyml/PreloadCourseGParam/${CZ}.game__PreloadCourseGParam.bgyml`, worldStart
     ? edit(g(`Gyml/PreloadCourseGParam/${CA}.game__PreloadCourseGParam.bgyml`), r => { r.Position = { X: Math.fround(worldStart[0]), Y: Math.fround(worldStart[1]), Z: Math.fround(worldStart[2]) }; })
@@ -600,7 +600,7 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
   progress('Updating the game\'s tables…');
   let courseRows = rsdbCourse(await Rz(`RSDB/Course.Product.${V}.rstbl.byml.zs`), CA, CZ, hSZ);
   for (const v of variants) courseRows = rsdbCourse(courseRows, CA, v.CV, hSZ);
-  if (worldScene) courseRows = edit(courseRows, rows => { for (const C of [CZ, ...variants.map(v => v.CV)]) { const row = rows.find(x => x.__RowId.includes('/' + C + '.')); row.WorldTransformParentActor = ''; row.WorldTransformParentFile = worldScene; row.AudienceType = 'NoFile'; if ('IsForbidEnvirionmentalEffect' in row) row.IsForbidEnvirionmentalEffect = false; } });
+  if (worldScene) courseRows = edit(courseRows, rows => { for (const C of [CZ, ...variants.map(v => v.CV)]) { const row = rows.find(x => x.__RowId.includes('/' + C + '.')); row.WorldTransformParentActor = ''; row.WorldTransformParentFile = worldScene; row.AudienceType = 'NoFile'; } });
   putZ(`RSDB/Course.Product.${V}.rstbl.byml.zs`, courseRows);
   putZ(`RSDB/Tag.Product.${V}.rstbl.byml.zs`, rsdbTags(await Rz(`RSDB/Tag.Product.${V}.rstbl.byml.zs`), [[CA, CZ], ...variants.map(v => [CA, v.CV]), ['Work/Gyml/CourseAreaGParam/' + SA, SZ], ...P.tags]));
   putZ(`RSDB/CourseArea.Product.${V}.rstbl.byml.zs`, rsdbCloneRow(await Rz(`RSDB/CourseArea.Product.${V}.rstbl.byml.zs`), SA, SZ, spec.display));
