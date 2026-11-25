@@ -9,7 +9,7 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.0';
+const EDITOR_VER = 'v1.1';
 import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas } from './newslot.js';
 import { parseSarc as parseSarcM } from './sarc.js';
 import { generate, toWorld, DEFAULTS as TC_DEFAULTS, DEFAULT_POINTS, LOCK_AFTER, LOCK_BEFORE, SURF } from './trackgen.js';
@@ -1998,10 +1998,10 @@ function tcOpts() {
   o.tex = JSON.parse(JSON.stringify(TC.surf));
   return o;
 }
-function tcDesign() { return { v: 1, boosts: TC.boosts || [], rails: TC.railsImp || [], glideMade: TC.glideMade || [], hour: $('#tc_time').value, mm: TC.mm || null, music: $('#tc_music').value || TC.musicWant || '', musicHost: $('#tc_host').value || TC.hostWant || '', qc: TC.qc || null, name: $('#tc_name').value, mod: $('#tc_mod').value, cup: $('#tc_cup').value, vs: $('#tc_vs').value, picsvs: $('#tc_picsvs').checked, small: !$('#tc_big').checked, presets: TC.presets, nflip: $('#tc_nflip').checked, fr: TC.fr || null, points: TC.pts, opts: tcOpts(), src: $('#tc_src').value, place: tcPlace(), map: TC.map, files: { vis: TC.vis?.name || null, col: TC.col?.name || null } }; }
+function tcDesign() { return { v: 1, boosts: TC.boosts || [], rails: TC.railsImp || [], glideMade: TC.glideMade || [], hour: $('#tc_time').value, mm: TC.mm || null, music: $('#tc_music').value || TC.musicWant || '', musicHost: $('#tc_host').value || TC.hostWant || '', qc: TC.qc || null, name: $('#tc_name').value, mod: $('#tc_mod').value, cup: $('#tc_cup').value, vs: $('#tc_vs').value, picsvs: $('#tc_picsvs').checked, small: !$('#tc_big').checked, presets: TC.presets, nflip: $('#tc_nflip').checked, sharp: $('#tc_sharp').checked, fr: TC.fr || null, points: TC.pts, opts: tcOpts(), src: $('#tc_src').value, place: tcPlace(), map: TC.map, files: { vis: TC.vis?.name || null, col: TC.col?.name || null } }; }
 function tcApplyDesign(d) {
   TC.pts = (d.points || DEFAULT_POINTS).map(p => p[3] && typeof p[3] === 'object' ? [+p[0], +p[1], +p[2], { ...p[3] }] : [+p[0], +p[1], +p[2]]); TC.multi = new Set();
-  if (d.name) $('#tc_name').value = d.name; if (d.mod) $('#tc_mod').value = d.mod; if (d.cup !== undefined) $('#tc_cup').value = d.cup; $('#tc_vs').value = d.vs !== undefined ? d.vs : 'Rainbow_00'; $('#tc_picsvs').checked = !!d.picsvs; $('#tc_big').checked = !d.small; TC.presets = Array.isArray(d.presets) ? d.presets.map(p => ({ ...p })) : []; setTimeout(tcEnsurePresets, 0); $('#tc_nflip').checked = !!d.nflip; TC.fr = d.fr ? { ...frDefault(), ...d.fr } : null; $('#tc_fr').checked = !!TC.fr?.on; frInfo(); TC.musicWant = d.music || ''; TC.hostWant = d.musicHost || ''; tcMusicFill(); TC.mm = d.mm || null; $('#tc_time').value = d.hour || '';
+  if (d.name) $('#tc_name').value = d.name; if (d.mod) $('#tc_mod').value = d.mod; if (d.cup !== undefined) $('#tc_cup').value = d.cup; $('#tc_vs').value = d.vs !== undefined ? d.vs : 'Rainbow_00'; $('#tc_picsvs').checked = !!d.picsvs; $('#tc_big').checked = !d.small; TC.presets = Array.isArray(d.presets) ? d.presets.map(p => ({ ...p })) : []; setTimeout(tcEnsurePresets, 0); $('#tc_nflip').checked = !!d.nflip; $('#tc_sharp').checked = !!d.sharp; TC.fr = d.fr ? { ...frDefault(), ...d.fr } : null; $('#tc_fr').checked = !!TC.fr?.on; frInfo(); TC.musicWant = d.music || ''; TC.hostWant = d.musicHost || ''; tcMusicFill(); TC.mm = d.mm || null; $('#tc_time').value = d.hour || '';
   const o = { ...TC_DEFAULTS, ...(d.opts || {}) };
   for (const [k, id] of Object.entries(tcFields)) $('#' + id).value = o[k];
   $('#tc_ground').checked = !!o.ground; $('#tc_coins').checked = !!o.coins;
@@ -2462,6 +2462,7 @@ $('#tc_vs').append(el('option', { value: '' }, 'No stand-in (in the open world: 
 $('#tc_vs').value = 'Rainbow_00';
 for (const id of ['tc_name', 'tc_mod', 'tc_cup', 'tc_vs', 'tc_picsvs']) $('#' + id).addEventListener('change', tcSave);
 $('#tc_nflip').addEventListener('change', tcSave);
+$('#tc_sharp').addEventListener('change', () => { TC.impKey = ''; tcUpdate(); tcSave(); });
 $('#tc_big').addEventListener('change', () => { TC.impKey = ''; tcLoadCap(); tcSave(); });
 $('#tc_build').onclick = () => tcBuild(false);
 $('#tc_zip').onclick = () => tcBuild(true);
@@ -2678,7 +2679,7 @@ $('#tc_export').onclick = async () => {
 };
 $('#tc_import').onclick = () => $('#tc_file').click();
 $('#tc_file').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; try { await tcOpenProject(f.name, new Uint8Array(await f.arrayBuffer())); } catch (err) { console.error(err); busy(); toast('Couldn\'t open ' + f.name + ': ' + err.message, 'err'); } };
-window.__mkwe = { GL, select, orbit, camera, renderer, tcOpenProject, tcProjectZip, unzip, tcCheckDump, S, TC, QC, tcBuild, tcUpdate, tcSetModel, qcPreview, drawGuide, gizmo, frHeight: f => frHeight(f), frGround: (x, z) => frGround(x, z), trGround: (x, z) => trGround(x, z) };
+window.__mkwe = { tcVM: () => tcVM(),  GL, select, orbit, camera, renderer, tcOpenProject, tcProjectZip, unzip, tcCheckDump, S, TC, QC, tcBuild, tcUpdate, tcSetModel, qcPreview, drawGuide, gizmo, frHeight: f => frHeight(f), frGround: (x, z) => frGround(x, z), trGround: (x, z) => trGround(x, z) };
 
 // ---------------------------------------------------------------- Track Creator: your own models
 const TC_PLACE = { scale: 'tc_sc', rotY: 'tc_rot', ox: 'tc_ox', oy: 'tc_oy', oz: 'tc_oz', tiltX: 'tc_tx', tiltZ: 'tc_tz' };
@@ -3252,7 +3253,7 @@ function tcPreviewTex(c) { if (!tcPrevTex.has(c)) { const t = new THREE.CanvasTe
 // TC.presets: [{ id, kind, pos: [x, y, z] (track coordinates), yaw (degrees), scale }]; their geometry is read from the dump
 TC.presets = []; TC.presetGeo = new Map();
 const VM = { key: '', vis: null, col: null };
-const tcVMKey = () => JSON.stringify([TC.presets, [...TC.presetGeo.keys()].filter(k => TC.presetGeo.get(k)?.mats), tcPlace(), TC.vis?.name, TC.vis?.size, TC.col?.name]);
+const tcVMKey = () => JSON.stringify([$('#tc_sharp').checked, TC.presets, [...TC.presetGeo.keys()].filter(k => TC.presetGeo.get(k)?.mats), tcPlace(), TC.vis?.name, TC.vis?.size, TC.col?.name]);
 const tcPresetNrm = n => { for (const g of TC.presetGeo.values()) if (g?.nrm?.has(n)) return g.nrm.get(n); return null; };
 // a preset's own collision shape is collision only: not drawn with the model
 const tcVisOnly = m => m && { ...m, mats: new Map([...m.mats].filter(([n]) => !(/_col_/.test(n) && TC.map.slot[n] === 'none'))) };
@@ -3276,7 +3277,28 @@ function tcMergePresets(base, skip) {
   }
   return { ...base, mats, tex, tris };
 }
-function tcVM() { if (!TC.vis) return null; const k = tcVMKey(); if (k !== VM.key) { VM.key = k; VM.vis = tcMergePresets(TC.vis.model); VM.col = TC.col ? tcMergePresets(TC.col.model) : null; } return VM.vis; }
+function tcVM() { if (!TC.vis) return null; const k = tcVMKey(); if (k !== VM.key) { VM.key = k; VM.vis = tcMergePresets($('#tc_sharp').checked ? sharpNormals(TC.vis.model) : TC.vis.model); VM.col = TC.col ? tcMergePresets(TC.col.model) : null; } return VM.vis; }
+// re-made shading normals: each corner averages only the faces round it that meet its own at under ANGLE (so a cliff's edge stays sharp)
+const SHARP_DEG = 35, sharpCache = new WeakMap();
+function sharpNormals(model) {
+  if (!model?.mats) return model; if (sharpCache.has(model)) return sharpCache.get(model);
+  const cos = Math.cos(SHARP_DEG * Math.PI / 180), faces = [], at = new Map(), key = (P, i) => `${Math.round(P[i] * 1000)},${Math.round(P[i + 1] * 1000)},${Math.round(P[i + 2] * 1000)}`;
+  for (const [n, T] of model.mats) for (let t = 0; t < T.pos.length / 9; t++) {
+    const P = T.pos, o = 9 * t, e1 = [P[o + 3] - P[o], P[o + 4] - P[o + 1], P[o + 5] - P[o + 2]], e2 = [P[o + 6] - P[o], P[o + 7] - P[o + 1], P[o + 8] - P[o + 2]];
+    const c = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]], l = Math.hypot(...c);
+    const f = { n, t, fn: l > 1e-12 ? c.map(v => v / l) : null, w: l };
+    faces.push(f); if (f.fn) for (let j = 0; j < 3; j++) { const k = key(P, o + 3 * j); if (!at.has(k)) at.set(k, []); at.get(k).push(f); }
+  }
+  const mats = new Map([...model.mats].map(([n, T]) => [n, { ...T, nrm: T.nrm.slice() }]));
+  for (const f of faces) {
+    if (!f.fn) continue; const T = model.mats.get(f.n), N = mats.get(f.n).nrm, o = 9 * f.t;
+    for (let j = 0; j < 3; j++) {
+      const s = [0, 0, 0]; for (const g of at.get(key(T.pos, o + 3 * j))) if (g.fn[0] * f.fn[0] + g.fn[1] * f.fn[1] + g.fn[2] * f.fn[2] >= cos) for (let k = 0; k < 3; k++) s[k] += g.fn[k] * g.w;
+      const l = Math.hypot(...s) || 1; for (let k = 0; k < 3; k++) N[o + 3 * j + k] = s[k] / l;
+    }
+  }
+  const out = { ...model, mats }; sharpCache.set(model, out); return out;
+}
 function tcCM() { tcVM(); return VM.col || TC.col?.model; }
 async function tcEnsurePresets() {
   if (!S.romfs || S.romfs.fake) return;
@@ -3428,7 +3450,7 @@ function tcFillMaps() {
     el('span', { class: 'mflags' }, flag(n, 'cut', 'see-through', 'Use the texture\'s transparency: clear parts are cut away (fences, grates, leaves). Needs a texture with alpha.'), flag(n, 'two', '2-sided', 'Show both sides of every face (thin walls, signs, leaves)'), nrmBtn(n)), slotSel(n))) : []));
   // collision: the picture says which material it is (its name is in the tooltip)
   $('#tc_surfs').replaceChildren(...(TC.vis ? [...(TC.col ? tcCM() : tcVM()).mats.keys()].map(n => { const has = !!tcThumb(n);
-    return el('div', { class: 'mrow t' + (has ? ' iconly' : '') }, tcIcon(n, false), el('span', { title: n }, has ? '' : n), surfSel(n)); }) : []));
+    return el('div', { class: 'mrow t tsurfm' }, tcIcon(n, false), el('span', { title: n }, n), surfSel(n)); }) : []));
 }
 const tcModelSize = files => files.reduce((a, f) => a + f.bytes.length, 0);
 async function tcSetModel(kind, files, quiet) {
