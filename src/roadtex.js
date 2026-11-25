@@ -10,6 +10,8 @@ export const SURFACES = [
   { key: 'ground', label: 'Ground', slot: 'floortile' },
   { key: 'beach', label: 'Beach', slot: 'backside01', fit: 'g', def: C0 + 'DesertHills_SandDirt_00_Alb' },
   { key: 'rail', label: 'Rails', slot: 'backside00', fit: 'w', def: C0 + 'Lava_A_GalvanizedIron_00_Alb' },
+  { key: 'cliff', label: 'Cliffs', slot: 'watersedge', fit: 'w', def: C0 + 'FirstCircuit_CliffWall_00_Alb' },
+  { key: 'mushroom', label: 'Mushrooms', slot: 'floorlight', fit: 'w', def: C0 + 'DonkeyKong_SteelWall_00_Alb' },
 ];
 // surfaces each picture suits (r road, e edge, w wall, g ground): the list shows those first
 const C = 'CmnTex_Stage_';
@@ -84,7 +86,7 @@ export const ROADTEX = [
 export const ALL_TEX = ROADTEX.flatMap(g => g.items.map(t => ({ ...t, course: g.course })));
 export const texByName = n => ALL_TEX.find(t => t.name === n);
 // the default (the base model's own look) and how big one copy is, per surface
-export const DEFAULT_SIZE = { road: 4, edge: 4, wall: 4, ground: 10, beach: 10, rail: 2 };
+export const DEFAULT_SIZE = { road: 4, edge: 4, wall: 4, ground: 10, beach: 10, rail: 2, cliff: 6, mushroom: 0 };
 
 // the 30 stages on the VS / Time Trials course map, in the game's order, with their course names
 export const VS_STAGES = [['FirstCircuit', 'Mario Bros. Circuit'], ['WestCity', 'Crown City'], ['Coaster', 'Whistlestop Summit'], ['DonkeyKong', 'DK Spaceport'],

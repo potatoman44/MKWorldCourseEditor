@@ -10,6 +10,7 @@ export const DEFAULTS = {
   beach: 0, beachMat: 'backside01',    // beach: metres of sand round the ground square, sloping down from its edge to beachY (or 8 m down)
   beachY: null,
   rails: 'none', railMat: 'backside00', railR: 0.25,   // grind rails on the wall tops: 'left' | 'right' | 'both' (the way you drive)
+  cliffMat: 'watersedge', mushroomMat: 'floorlight', hillSlope: 1.5,   // a point's sides (cliffs / hills / bridge) and trampoline gaps
 };
 const RAIL_SIDES = 8;
 // locked points that keep a straight over the start grid (the grid reaches 46 m behind the line)
@@ -17,7 +18,7 @@ export const LOCK_BEFORE = [[0, 0, 60], [0, 0, 28]];      // last points of the 
 export const LOCK_AFTER = [[0, 0, 0], [0, 0, -22]];       // the start line, then the first bit after it
 export const DEFAULT_POINTS = [[-6, 0, -62], [-40, 0, -88], [-82, 0, -62], [-92, 0, 0], [-82, 0, 62], [-40, 0, 88], [-6, 0, 76]];
 // what the collision of each surface is: [material, subMaterial, mask] (road/asphalt, wall/concrete, dirt/grass)
-export const SURF = { road: [4, 4, 0], wall: [10, 5, 0], grass: [6, 8, 0], sand: [6, 10, 0], railTop: [4, 13, 0], railSide: [10, 13, 0] };   // a rail's collision: a box with a metal road top and metal wall sides, like the game's (Mario Bros. Circuit's stand-top rails)
+export const SURF = { road: [4, 4, 0], wall: [10, 5, 0], grass: [6, 8, 0], sand: [6, 10, 0], railTop: [4, 13, 0], railSide: [10, 13, 0], fall: [28, 0, 0], trampoline: [19, 0, 0] };   // a rail's collision: a box with a metal road top and metal wall sides, like the game's (Mario Bros. Circuit's stand-top rails)
 
 export const controlLoop = pts => [...LOCK_AFTER, ...pts, ...LOCK_BEFORE];
 
@@ -96,7 +97,10 @@ const off = (r, d, y = 0) => [r.p[0] + r.l[0] * d, r.p[1] + y, r.p[2] + r.l[2] *
 
 /** Build everything. cap: modelCapacity() of the Central model (tris/verts per material). */
 // a point's own walls and rails (p[3] = { w: 'none' | 'short' | 'tall' | 'tunnel', r: 'none' | 'left' | 'right' | 'both' }): from it to the next point
+// and its sides (sd: 'cliff' straight down to the ground | 'hill' sloping down to it | 'bridge' a deck on pillars) or a gap instead of road
+// (gap: 'glide' a glide panel before it | 'tramp' trampoline mushrooms in it | 'jump' just a gap)
 export const WALL_STYLES = { none: 0, short: 1.5, tall: 5, tunnel: 8 };
+export const SIDE_STYLES = ['cliff', 'hill', 'bridge'], GAP_STYLES = ['glide', 'tramp', 'jump'];
 export function generate(points, o, cap) {
   o = { ...DEFAULTS, ...o };
   const styles = points.map(p => p[3] || null); points = points.map(p => [p[0], p[1], p[2]]);
@@ -108,7 +112,10 @@ export function generate(points, o, cap) {
   const styleOfSeg = c => (c >= LOCK_AFTER.length && c < LOCK_AFTER.length + styles.length ? styles[c - LOCK_AFTER.length] : null) || {};
   const ringStyle = rings.map(r => { const st = styleOfSeg(r.seg), w = st.w && st.w in WALL_STYLES ? st.w : null;
     const h = w ? WALL_STYLES[w] : o.wallHeight, tunnel = w ? w === 'tunnel' : !!o.tunnel, rails = h > 0 && !tunnel ? ({ left: [1], right: [-1], both: [1, -1] }[st.r] || []) : [];   // rails only where a point asks for them
-    return { h, tunnel: tunnel && h > 0, rails }; });
+    return { h, tunnel: tunnel && h > 0, rails, sd: SIDE_STYLES.includes(st.sd) ? st.sd : null, gap: GAP_STYLES.includes(st.gap) ? st.gap : null }; });
+  // the gaps: runs of rings with no road (i0..i1, all in the gap), round the loop
+  const gaps = []; for (let i = 0; i <= N; i++) if (ringStyle[i].gap && (i === 0 || ringStyle[i - 1].gap !== ringStyle[i].gap)) { let j = i; while (j < N && ringStyle[j + 1].gap === ringStyle[i].gap) j++; gaps.push({ i0: i, i1: j, type: ringStyle[i].gap }); }
+  const anySide = k => ringStyle.some(x => x.sd === k && !x.gap);
   const anyWall = ringStyle.some(x => x.h > 0), anyTunnel = ringStyle.some(x => x.tunnel), maxRails = Math.max(0, ...ringStyle.map(x => x.rails.length));
   const lim = [];
   const need = (mat, trisPerSeg, vertsPerRing) => { const c = cap[mat]; if (!c) throw new Error('unknown material ' + mat); lim.push(Math.min(Math.floor(c.tris / trisPerSeg), Math.floor(c.verts / vertsPerRing) - 1)); };
@@ -120,6 +127,9 @@ export function generate(points, o, cap) {
   const gN = o.groundPoly && o.groundPoly.length >= 3 ? o.groundPoly.length : 4;
   if (o.beach > 0 && o.ground) use(o.beachMat, 2 * gN, 2 * gN);
   if (maxRails) use(o.railMat, 2 * RAIL_SIDES * maxRails, (RAIL_SIDES + 1) * maxRails);
+  if (anySide('cliff') || gaps.length) use(o.cliffMat, 4, 4);
+  if (anySide('hill')) use(o.groundMat, 4, 4);
+  if (anySide('bridge')) use(o.wallMat, 8, 8);
   for (const [m, [t, v]] of Object.entries(by)) need(m, t, v);
   const perPart = Math.max(4, Math.min(...lim));
   const parts = [];
@@ -147,7 +157,7 @@ export function generate(points, o, cap) {
         let t1 = [a, b, c], t2 = [a, c, d];
         if (upFacing) { const n1 = cross(sub(pb, pa), sub(pc, pa)); if (n1[1] < 0) { t1 = [a, c, b]; t2 = [a, d, c]; } }
         const P = t => t.map(k => V[k][0]), area = t => { const q = P(t), n = cross(sub(q[1], q[0]), sub(q[2], q[0])); return Math.hypot(...n); };
-        for (const t of [t1, t2]) { if (area(t) < 1e-6) continue; TR.push(t); if (twoSided) TR.push([t[0], t[2], t[1]]); tris.push([P(t), tag]); }
+        for (const t of [t1, t2]) { if (area(t) < 1e-6) continue; TR.push(t); if (twoSided) TR.push([t[0], t[2], t[1]]); if (tag !== null) tris.push([P(t), tag]); }
       }
     };
     // texture coordinates: across the surface (u) and along the road (v, from the distance driven), so road
@@ -160,23 +170,59 @@ export function generate(points, o, cap) {
       const u = UV(k), a = along(k, wdt), uA = 0, uB = u.size ? wdt / u.size : 1;
       quadStrip(o[k + 'Mat'], A, B, tag, R.map(r => [uA, (r.s - a.v0) / a.rep]), R.map(r => [uB, (r.s - a.v0) / a.rep]), false, true);
     };
-    // road
-    const rl = R.map(r => off(r, hw)), rr = R.map(r => off(r, -hw));
-    strip('road', rl, rr, o.width, 0);
-    if (o.shoulder > 0) for (const side of [1, -1]) strip('shoulder', R.map(r => off(r, side * hw)), R.map(r => off(r, side * sw)), o.shoulder, 2);
     // runs of rings (k0..k1 in this part) where pass(k, k + 1) holds for every stretch between them
-    const RS = k => ringStyle[i0 + k];
+    const RS = k => ringStyle[i0 + k], solid = (a, b) => !RS(a).gap && !RS(b).gap;
     const runs = pass => { const out = []; let a = -1; for (let k = 0; k + 1 < R.length; k++) { if (pass(k, k + 1)) { if (a < 0) a = k; } else if (a >= 0) { out.push([a, k]); a = -1; } } if (a >= 0) out.push([a, R.length - 1]); return out; };
-    for (const [k0, k1] of runs((a, b) => RS(a).h > 0 || RS(b).h > 0)) for (const side of [1, -1]) {
+    const stripR = (k, Rr, A, B, wdt, tag) => { const u = UV(k), a = along(k, wdt), uB = u.size ? wdt / u.size : 1;
+      quadStrip(o[k + 'Mat'], A, B, tag, Rr.map(r => [0, (r.s - a.v0) / a.rep]), Rr.map(r => [uB, (r.s - a.v0) / a.rep]), false, true); };
+    // road (not over a gap)
+    for (const [k0, k1] of runs(solid)) { const Rr = R.slice(k0, k1 + 1);
+      stripR('road', Rr, Rr.map(r => off(r, hw)), Rr.map(r => off(r, -hw)), o.width, 0);
+      if (o.shoulder > 0) for (const side of [1, -1]) stripR('shoulder', Rr, Rr.map(r => off(r, side * hw)), Rr.map(r => off(r, side * sw)), o.shoulder, 2); }
+    // the sides below the road: cliffs straight down to the ground, hills sloping down to it, or a bridge deck on pillars
+    const gy = mn[1] - 0.05, drop = r => r.p[1] - gy;
+    const UVs = (k, Rr, h) => { const u = UV(k), sz = u.size || 6, s0 = Math.floor(Rr[0].s / sz) * sz; return Rr.map((r, j) => [(r.s - s0) / sz, h(r, j) / (sz * u.aspect)]); };
+    for (const [k0, k1] of runs((a, b) => solid(a, b) && RS(a).sd === 'cliff' && RS(b).sd === 'cliff')) for (const side of [1, -1]) {
+      const Rr = R.slice(k0, k1 + 1);
+      quadStrip(o.cliffMat, Rr.map(r => off(r, side * sw)), Rr.map(r => off(r, side * sw, -drop(r))), 1, UVs('cliff', Rr, () => 0), UVs('cliff', Rr, r => drop(r)), true, false);
+    }
+    for (const [k0, k1] of runs((a, b) => solid(a, b) && RS(a).sd === 'hill' && RS(b).sd === 'hill')) for (const side of [1, -1]) {
+      const Rr = R.slice(k0, k1 + 1), gu = UV('ground'), gs = gu.size || 10;
+      const A = Rr.map(r => off(r, side * sw)), B = Rr.map(r => off(r, side * (sw + Math.max(0, drop(r)) * o.hillSlope), -drop(r)));
+      quadStrip(o.groundMat, A, B, 2, A.map(q => [q[0] / gs, q[2] / (gs * gu.aspect)]), B.map(q => [q[0] / gs, q[2] / (gs * gu.aspect)]), false, true);
+    }
+    for (const [k0, k1] of runs((a, b) => solid(a, b) && RS(a).sd === 'bridge' && RS(b).sd === 'bridge')) {
+      const Rr = R.slice(k0, k1 + 1), T = 1.2, u = UV('wall'), sz = u.size || 4, s0 = Math.floor(Rr[0].s / sz) * sz, us = Rr.map(r => (r.s - s0) / sz);
+      quadStrip(o.wallMat, Rr.map(r => off(r, sw, -T)), Rr.map(r => off(r, -sw, -T)), null, us.map(v => [v, 0]), us.map(v => [v, 2 * sw / sz]), true, false);   // underneath
+      for (const side of [1, -1]) quadStrip(o.wallMat, Rr.map(r => off(r, side * sw)), Rr.map(r => off(r, side * sw, -T)), null, us.map(v => [v, 0]), us.map(v => [v, T / sz]), true, false);   // its edges
+      // pillars every 30 m (where the drop is worth it): walls for karts down below
+      const [V, TR] = G(o.wallMat);
+      for (let k = 1; k < Rr.length; k++) { const r = Rr[k]; if (Math.floor(r.s / 30) === Math.floor(Rr[k - 1].s / 30) || drop(r) < 3) continue;
+        const pw = Math.min(2.5, sw * 0.3), c = [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([a, b]) => [r.p[0] + r.l[0] * a * pw + r.t[0] * b * pw, r.p[2] + r.l[2] * a * pw + r.t[2] * b * pw]);
+        for (let e = 0; e < 4; e++) { const a = c[e], b = c[(e + 1) % 4], top = r.p[1] - T, q = [[a[0], top, a[1]], [b[0], top, b[1]], [b[0], gy, b[1]], [a[0], gy, a[1]]];
+          const n = norm(cross(sub(q[1], q[0]), sub(q[3], q[0]))), base = V.length, ln = Math.hypot(b[0] - a[0], b[1] - a[1]) / sz;
+          q.forEach((p, j) => V.push([loc(p), n, [[0, 0], [ln, 0], [ln, (top - gy) / sz], [0, (top - gy) / sz]][j]]));
+          TR.push([base, base + 1, base + 2], [base, base + 2, base + 3], [base, base + 2, base + 1], [base, base + 3, base + 2]);
+          tris.push([[q[0], q[1], q[2]].map(loc), 1], [[q[0], q[2], q[3]].map(loc), 1], [[q[0], q[2], q[1]].map(loc), 1], [[q[0], q[3], q[2]].map(loc), 1]); }
+      }
+    }
+    // the ends of the road at a gap: a rock face down to the ground (a bridge's deck: just its thickness)
+    for (let k = 0; k < R.length; k++) {
+      const into = k + 1 < R.length && !RS(k).gap && RS(k + 1).gap, outof = k > 0 && !RS(k).gap && RS(k - 1).gap; if (!into && !outof) continue;
+      const r = R[k], depth = RS(k).sd === 'bridge' ? 1.2 : drop(r); if (depth < 0.2) continue;
+      const u = UV('cliff'), sz = u.size || 6;
+      quadStrip(o.cliffMat, [off(r, sw), off(r, sw, -depth)], [off(r, -sw), off(r, -sw, -depth)], 1, [[0, 0], [0, depth / sz]], [[2 * sw / sz, 0], [2 * sw / sz, depth / sz]], true, false);
+    }
+    for (const [k0, k1] of runs((a, b) => solid(a, b) && (RS(a).h > 0 || RS(b).h > 0))) for (const side of [1, -1]) {
       const u = UV('wall'), Rr = R.slice(k0, k1 + 1), hs = Rr.map((_, k) => RS(k0 + k).h), tall = u.size || Math.max(...hs), wide = tall / u.aspect, s0 = Math.floor(Rr[0].s / wide) * wide;
       const a = Rr.map(r => off(r, side * sw)), b = Rr.map((r, k) => off(r, side * sw, hs[k]));
       quadStrip(o.wallMat, a, b, 1, Rr.map((r, k) => [(r.s - s0) / wide, hs[k] / tall]), Rr.map(r => [(r.s - s0) / wide, 0]), true, false);
     }
-    for (const [k0, k1] of runs((a, b) => RS(a).tunnel && RS(b).tunnel)) {   // the roof: across from wall top to wall top, seen from below (and above)
+    for (const [k0, k1] of runs((a, b) => solid(a, b) && RS(a).tunnel && RS(b).tunnel)) {   // the roof: across from wall top to wall top, seen from below (and above)
       const u = UV('wall'), Rr = R.slice(k0, k1 + 1), hs = Rr.map((_, k) => RS(k0 + k).h), tall = u.size || Math.max(...hs), wide = tall / u.aspect, s0 = Math.floor(Rr[0].s / wide) * wide;
       quadStrip(o.wallMat, Rr.map((r, k) => off(r, sw, hs[k])), Rr.map((r, k) => off(r, -sw, hs[k])), 1, Rr.map(r => [(r.s - s0) / wide, 0]), Rr.map(r => [(r.s - s0) / wide, 2 * sw / tall]), true, false);
     }
-    for (const side of [1, -1]) for (const [k0, k1] of runs((a, b) => RS(a).rails.includes(side) && RS(b).rails.includes(side))) {   // a metal tube along the wall's top (looks only: the rail path is what you grind on)
+    for (const side of [1, -1]) for (const [k0, k1] of runs((a, b) => solid(a, b) && RS(a).rails.includes(side) && RS(b).rails.includes(side))) {   // a metal tube along the wall's top (looks only: the rail path is what you grind on)
       const [V, TR] = G(o.railMat), u = UV('rail'), rep = (u.size || 2) * u.aspect, v0 = Math.floor(R[k0].s / rep) * rep;
       for (let k = k0; k <= k1; k++) { const r = R[k];
         const c = off(r, side * sw, RS(k).h + o.railR);
@@ -194,6 +240,34 @@ export function generate(points, o, cap) {
         const face = (q, tag, upward) => { for (let t of [[q[0], q[1], q[2]], [q[0], q[2], q[3]]]) { const n = cross(sub(t[1], t[0]), sub(t[2], t[0])); if (Math.hypot(...n) < 1e-6) continue; if (upward && n[1] < 0) t = [t[0], t[2], t[1]]; tris.push([t.map(loc), tag]); } };
         face([A.hi[0], A.hi[1], B.hi[1], B.hi[0]], 4, true);   // the top
         for (const e of [0, 1]) face([A.lo[e], A.hi[e], B.hi[e], B.lo[e]], 5, false);   // the sides
+      }
+    }
+    for (const gp of gaps) {
+      const mid = Math.floor((gp.i0 + gp.i1) / 2); if (mid < i0 || mid >= i1 || (mid === i1 - 1 && false)) continue;
+      const a = rings[Math.max(0, gp.i0 - 1)], b = rings[Math.min(N, gp.i1 + 1)], len = b.s - a.s + (b.s < a.s ? L : 0);
+      // a fall-out zone at the bottom: miss the far side and you're put back on the road (collision only)
+      if (Math.min(drop(a), drop(b)) > 2) { const k = Math.max(2, Math.ceil(len / 8)), F = j => C.frame(a.s + len * j / k), W = sw + 6;
+        for (let j = 0; j < k; j++) { const p = F(j), q = F(j + 1), c = [off(p, W, gy + 0.3 - p.p[1]), off(p, -W, gy + 0.3 - p.p[1]), off(q, -W, gy + 0.3 - q.p[1]), off(q, W, gy + 0.3 - q.p[1])];
+          tris.push([[c[0], c[1], c[2]].map(loc), 6], [[c[0], c[2], c[3]].map(loc), 6]); } }
+      if (gp.type === 'tramp') {   // trampoline mushrooms: caps a little under the road, bouncy on top (the game's Trampoline), rows across the road
+        const along = Math.max(1, Math.round(len / 24)), across = Math.max(1, Math.round(o.width / 12)), rad = Math.min(6.5, o.width / (2 * across) * 0.95);
+        const [V, TR] = G(o.mushroomMat), SEG = 10;
+        for (let i = 0; i < along; i++) { const r = C.frame(a.s + len * (i + 0.5) / along), top = r.p[1] + (a.p[1] + (b.p[1] - a.p[1]) * (i + 0.5) / along - r.p[1]) - 1.5;
+          for (let j = 0; j < across; j++) {
+            const cx = r.p[0] + r.l[0] * (j - (across - 1) / 2) * 2 * rad, cz = r.p[2] + r.l[2] * (j - (across - 1) / 2) * 2 * rad, hh = rad * 0.45, base = top - hh;
+            // the cap: a dome (3 bands) on a flat rim, with its underside
+            const ringPt = (f, ang) => { const rr = rad * Math.cos(f * Math.PI / 2), y = base + hh * Math.sin(f * Math.PI / 2); return [cx + rr * Math.cos(ang), y, cz + rr * Math.sin(ang)]; };
+            const b0 = V.length, BANDS = 3;
+            for (let f = 0; f <= BANDS; f++) for (let q = 0; q <= SEG; q++) { const ang = 2 * Math.PI * q / SEG, p = ringPt(f / BANDS, ang), n = norm([p[0] - cx, (p[1] - base) * 2.2 + 0.01, p[2] - cz]); V.push([loc(p), n, [q / SEG, f / BANDS]]); }
+            for (let f = 0; f < BANDS; f++) for (let q = 0; q < SEG; q++) { const A = b0 + f * (SEG + 1) + q, B = A + 1, Cc = A + SEG + 2, D = A + SEG + 1;
+              const t1 = [A, D, Cc], t2 = [A, Cc, B]; for (let t of [t1, t2]) { const P = t.map(x => V[x][0]), nn = cross(sub(P[1], P[0]), sub(P[2], P[0])); if (Math.hypot(...nn) < 1e-8) continue; if (nn[1] < 0) t = [t[0], t[2], t[1]]; TR.push(t); tris.push([t.map(x => V[x][0]), 7]); } }
+            const ub = V.length; V.push([loc([cx, base, cz]), [0, -1, 0], [0.5, 0.5]]); for (let q = 0; q <= SEG; q++) { const ang = 2 * Math.PI * q / SEG; V.push([loc([cx + rad * Math.cos(ang), base, cz + rad * Math.sin(ang)]), [0, -1, 0], [0.5 + 0.5 * Math.cos(ang), 0.5 + 0.5 * Math.sin(ang)]]); }
+            for (let q = 0; q < SEG; q++) TR.push([ub, ub + 2 + q, ub + 1 + q]);
+            // the stalk, down to the ground
+            if (base - gy > 0.5) { const sr = rad * 0.32, s0 = V.length;
+              for (let q = 0; q <= SEG; q++) { const ang = 2 * Math.PI * q / SEG, n = [Math.cos(ang), 0, Math.sin(ang)]; V.push([loc([cx + sr * n[0], base, cz + sr * n[2]]), n, [q / SEG, 0]], [loc([cx + sr * n[0], gy, cz + sr * n[2]]), n, [q / SEG, (base - gy) / (2 * Math.PI * sr)]]); }
+              for (let q = 0; q < SEG; q++) { const A = s0 + 2 * q, B = A + 1, Cc = A + 3, D = A + 2; TR.push([A, Cc, B], [A, D, Cc]); tris.push([[A, Cc, B].map(x => V[x][0]), 1], [[A, D, Cc].map(x => V[x][0]), 1]); } }
+          } }
       }
     }
     if (pi === 0 && o.ground) {
@@ -220,31 +294,32 @@ export function generate(points, o, cap) {
     // fix the winding of every up-facing ground triangle (normal +Y)
     for (const [m, [V, TR]] of Object.entries(geom)) if (m === o.groundMat && pi === 0)
       for (const t of TR) { const n = cross(sub(V[t[1]][0], V[t[0]][0]), sub(V[t[2]][0], V[t[0]][0])); if (n[1] < 0) [t[1], t[2]] = [t[2], t[1]]; }
-    for (const t of tris) { const [a, b, c] = t[0]; const n = cross(sub(b, a), sub(c, a)); if (t[1] !== 1 && t[1] !== 5 && n[1] < 0) t[0] = [a, c, b]; }
+    for (const t of tris) { const [a, b, c] = t[0]; const n = cross(sub(b, a), sub(c, a)); if (t[1] !== 1 && t[1] !== 5 && t[1] !== 7 && n[1] < 0) t[0] = [a, c, b]; }
     const pts = Object.values(geom).flatMap(([V]) => V.map(v => v[0]));
     const bmin = [0, 1, 2].map(a => Math.min(...pts.map(p => p[a]))), bmax = [0, 1, 2].map(a => Math.max(...pts.map(p => p[a])));
-    return { name: `CmnObj_CTrkPart${String(pi).padStart(3, '0')}`, local: pos, min: bmin, max: bmax, geom, col: { tris, mats: [SURF.road, SURF.wall, SURF.grass, SURF.sand, SURF.railTop, SURF.railSide] }, rings: [i0, i1] };
+    return { name: `CmnObj_CTrkPart${String(pi).padStart(3, '0')}`, local: pos, min: bmin, max: bmax, geom, col: { tris, mats: [SURF.road, SURF.wall, SURF.grass, SURF.sand, SURF.railTop, SURF.railSide, SURF.fall, SURF.trampoline] }, rings: [i0, i1] };
   });
   // paths and objects (track space)
   const yaw = r => Math.atan2(r.t[0], r.t[2]);
   const nL = Math.max(8, Math.round(L / 25)), lap = [];
-  for (let i = 0; i < nL; i++) { const r = C.frame(L * i / nL);
-    lap.push({ pos: H(r.p), yaw: yaw(r), rs: [2 * sw + 4, 20], ro: [0, 10], dyn: i === 0 ? { IsStart: true } : (i % 3 === 2 ? { CheckPoint: Math.floor((i + 1) / 3) } : null) }); }
+  const gapAt = r => !!styleOfSeg(r.seg).gap;
+  for (let i = 0; i < nL; i++) { const r = C.frame(L * i / nL), g = gapAt(r);   // over a gap the box reaches well below and above the road (you drop, bounce or glide there)
+    lap.push({ pos: H(r.p), yaw: yaw(r), rs: [2 * sw + 4, g ? 90 : 20], ro: [0, g ? 20 : 10], dyn: i === 0 ? { IsStart: true } : (i % 3 === 2 ? { CheckPoint: Math.floor((i + 1) / 3) } : null) }); }
   const last = lap.reduce((m, n) => n.dyn && n.dyn.CheckPoint ? n.dyn.CheckPoint : m, 0);
   const nR = Math.max(16, Math.round(L / 12)), route = [];
   for (let i = 0; i < nR; i++) { const r = C.frame(L * i / nR); route.push({ pos: H(r.p), yaw: yaw(r), rs: [Math.max(4, Math.round(o.width * 0.4)), 10], ro: [0, 5] }); }   // narrower than the lap path, like the game's own routes
   const actors = [];
   if (o.itemPer > 0 && o.itemEvery > 0) for (let s = o.itemFirst; s < L - 60; s += o.itemEvery) {
-    const r = C.frame(s), gap = Math.min(4.5, o.width / o.itemPer);
+    const r = C.frame(s), gap = Math.min(4.5, o.width / o.itemPer); if (gapAt(r)) continue;
     for (let k = 0; k < o.itemPer; k++) { const q = H(off(r, (k - (o.itemPer - 1) / 2) * gap)); actors.push({ name: 'CmnObj_ItemBox000_A_00', pos: [q[0], q[1] + 1.3, q[2]] }); }
   }
   if (o.coins) for (let s = o.itemFirst + o.itemEvery / 2; s < L - 80; s += o.itemEvery) {
-    for (let k = 0; k < 5; k++) { const r = C.frame(s + k * 4); const q = H(off(r, hw * 0.5 * (Math.floor(s / o.itemEvery) % 2 ? 1 : -1))); actors.push({ name: 'CmnObj_Coin000_A_00', pos: [q[0], q[1] + 1.0, q[2]] }); }
+    for (let k = 0; k < 5; k++) { const r = C.frame(s + k * 4); if (gapAt(r)) continue; const q = H(off(r, hw * 0.5 * (Math.floor(s / o.itemEvery) % 2 ? 1 : -1))); actors.push({ name: 'CmnObj_Coin000_A_00', pos: [q[0], q[1] + 1.0, q[2]] }); }
   }
   // rail paths (RailSlidePath) along the tubes: a node wherever the wall bends a few degrees (and at least every 20 m), in rails of up to 30 nodes
   const railPaths = [];
   for (const side of [1, -1]) {
-    const on = i => ringStyle[i].rails.includes(side) && ringStyle[i + 1].rails.includes(side);
+    const on = i => ringStyle[i].rails.includes(side) && ringStyle[i + 1].rails.includes(side) && !ringStyle[i].gap && !ringStyle[i + 1].gap;
     for (let i = 0; i < N;) {
       if (!on(i)) { i++; continue; }
       let j = i; while (j < N && on(j)) j++;   // rings i..j
@@ -257,8 +332,11 @@ export function generate(points, o, cap) {
       i = j;
     }
   }
+  const gapPieces = gaps.filter(g => g.type === 'glide').map(g => { const a = rings[Math.max(0, g.i0 - 1)], b = rings[Math.min(N, g.i1 + 1)], len = b.s - a.s + (b.s < a.s ? L : 0);
+    return { kind: 'glidepanel', s: a.s - 3.2, x: 0, len: Math.round(len + 40), auto: true }; });
+  for (const g of gaps) { const a = rings[Math.max(0, g.i0 - 1)], b = rings[Math.min(N, g.i1 + 1)]; if (Math.min(a.p[1], b.p[1]) - (mn[1] - 0.05) < 3) { warn.push('A gap needs a drop under it: raise the points round it a few metres above the lowest part of the track.'); break; } }
   const stats = { length: L, segments: N, parts: out.length, perPart, checkpoints: last, lapNodes: nL, routeNodes: nR, items: actors.filter(a => /ItemBox/.test(a.name)).length };
-  return { parts: out, lap, route, actors, rings, stats, warn, bounds: [mn, mx], opts: o, railPaths };
+  return { parts: out, lap, route, actors, rings, stats, warn, bounds: [mn, mx], opts: o, railPaths, gapPieces, gaps };
 }
 
 // track space -> game world (the start line sits where Rainbow Road's start grid is)

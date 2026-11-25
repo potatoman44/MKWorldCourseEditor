@@ -9,7 +9,7 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.3';
+const EDITOR_VER = 'v1.4';
 import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas } from './newslot.js';
 import { parseSarc as parseSarcM } from './sarc.js';
 import { generate, toWorld, DEFAULTS as TC_DEFAULTS, DEFAULT_POINTS, LOCK_AFTER, LOCK_BEFORE, SURF } from './trackgen.js';
@@ -2243,7 +2243,7 @@ function tcUpdate(soon) {
     $('#tc_ptinfo').textContent = `${TC.pts.length} points` + (d === null ? '' : d > 0 ? ` · this point is ${d.toFixed(1)} m under water` : ` · this point is ${(-d).toFixed(1)} m above the water`);
     $('#tc_sink').disabled = !sp0 || wy === null; }
   { const ks = tcPicked(), val = key => { const vs = new Set(ks.map(i => TC.pts[i][3]?.[key] || 'default')); return vs.size === 1 ? [...vs][0] : 'mixed'; };
-    for (const [id, key] of [['#tc_pwall', 'w'], ['#tc_prail', 'r']]) { const sel = $(id); sel.disabled = !ks.length; const v = ks.length ? val(key) : 'default';
+    for (const [id, key] of [['#tc_pwall', 'w'], ['#tc_prail', 'r'], ['#tc_pside', 'sd'], ['#tc_pgap', 'gap']]) { const sel = $(id); sel.disabled = !ks.length; const v = ks.length ? val(key) : 'default';
       sel.querySelector('option[value="mixed"]').hidden = v !== 'mixed'; if (document.activeElement !== sel) sel.value = v; }
     $('#tc_pcount').textContent = ks.length > 1 ? `${ks.length} points picked` : ks.length ? 'from this point to the next' : 'pick a point (Ctrl+click picks more)'; }
   const sp = TC.pts[TC.sel];
@@ -2379,7 +2379,7 @@ async function tcWorldSpec(withParts) {
     if (!TC.qc || !TC.qc.lap.length) throw new Error('lay out the paths first: open Quick Create, draw the guide along your road and click Create');
     const q = tcQCSpec(TC.qc); g.lap = q.lap; g.route = q.routes[0] || q.lap.map(n => ({ ...n, rs: [Math.max(4, TC.qc.width * (TC.qc.routePct ?? 40) / 100), 10], ro: [0, 5], dyn: null })); g.routes = q.routes.length ? q.routes : [g.route]; g.actors = q.actors; g.starts = q.starts; g.lapRails = q.lapRails; g.routeRails = q.routeRails;
   } else if (!withParts) g.parts = [];
-  else if (TC.boosts?.length) { await tcDashLoad(rd); tcAddBoosts(g); }
+  else if (tcPiecesOf(g).length) { await tcDashLoad(rd, g); tcAddBoosts(g); }
   const w = toWorld(g, SLOT_START);
   const glides = tcGlidePaths(g).map(path => path.map(n => ({ ...n, pos: n.pos.map((v, i) => Math.fround(SLOT_START[i] + v)), yaw: Math.fround(n.yaw) })));
   // where the editor's glide paths start (now and in earlier builds): those are the ones a rebuild replaces; other glide paths on the track stay
@@ -2454,7 +2454,7 @@ $('#tc_sink').onclick = () => { const p = TC.pts[TC.sel], wy = tcWaterY(); if (!
 $('#tc_water').onchange = () => { tcUpdate(); tcSave(); };
 $('#tc_game').onchange = () => { if (tcGameOn() && TC.fr?.on) frLoadMap().then(() => tcUpdate()); tcUpdate(); };
 for (const id of [...Object.values(tcFields), 'tc_ground', 'tc_coins', 'tc_beach', 'tc_beachw']) $('#' + id).addEventListener('input', () => { tcUpdate(true); tcSave(); });
-for (const [id, key] of [['#tc_pwall', 'w'], ['#tc_prail', 'r']]) $(id).onchange = () => {
+for (const [id, key] of [['#tc_pwall', 'w'], ['#tc_prail', 'r'], ['#tc_pside', 'sd'], ['#tc_pgap', 'gap']]) $(id).onchange = () => {
   const v = $(id).value; if (v === 'mixed') return; tcPush();
   for (const i of tcPicked()) { const p = TC.pts[i], st = { ...(p[3] || {}) }; if (v === 'default') delete st[key]; else st[key] = v; if (Object.keys(st).length) p[3] = st; else p.length = 3; }
   tcUpdate(); tcSave();
@@ -2693,7 +2693,7 @@ const tcImporting = () => $('#tc_src').value === 'import';
 function tcPlace() { const o = {}; for (const [k, id] of Object.entries(TC_PLACE)) { const v = parseFloat($('#' + id).value); o[k] = isFinite(v) ? v : (k === 'scale' ? 1 : 0); } if (!(o.scale > 0)) o.scale = 1; o.zUp = $('#tc_zup').checked; o.pivot = TC.pivot || [0, 0, 0]; return o; }
 function tcGenOpts() {
   const o = tcOpts();
-  o.uv = { road: tcUV('road'), shoulder: tcUV('edge'), wall: tcUV('wall'), ground: tcUV('ground'), beach: tcUV('beach'), rail: tcUV('rail') };
+  o.uv = { road: tcUV('road'), shoulder: tcUV('edge'), wall: tcUV('wall'), ground: tcUV('ground'), beach: tcUV('beach'), rail: tcUV('rail'), cliff: tcUV('cliff'), mushroom: tcUV('mushroom') };
   // beach: sand round the grass ground's square, down into the water (4 m under it in the open world, else 8 m down)
   $('#tc_beach').disabled = !$('#tc_ground').checked;
   if (!tcImporting() && $('#tc_beach').checked) { o.beach = Math.max(4, parseFloat($('#tc_beachw').value) || 30); const wy = tcWaterY(); o.beachY = wy === null ? null : wy - 4; }
@@ -3100,11 +3100,13 @@ async function tcPieceLoad(rd, kind) {
   const body = await tex(def.body); G.bodyTex = body ? rgbaCanvas(body) : flatCanvas('#c8c8d0');
   return (PGEO[kind] = G);
 }
-async function tcDashLoad(rd) { for (const k of new Set(TC.boosts.map(b => b.kind || 'boost'))) await tcPieceLoad(rd, k); }
-function tcAddBoosts(g) { addBoosts(g, TC.boosts, PGEO); }
+// the road pieces: yours, and a glide panel before each glide gap
+const tcPiecesOf = g => [...(TC.boosts || []), ...(g?.gapPieces || [])];
+async function tcDashLoad(rd, g) { for (const k of new Set(tcPiecesOf(g || TC.gen).map(b => b.kind || 'boost'))) await tcPieceLoad(rd, k); }
+function tcAddBoosts(g) { addBoosts(g, tcPiecesOf(g), PGEO); }
 const tcBoostClamp = boostClamp;
 function tcBoostTextures(parts, textures) {
-  if (!TC.boosts?.length) return textures;
+  if (!Object.keys(PGEO).length) return textures;
   const add = (name, c) => textures.set(name, { get: (l, w, h, a) => canvasRGBA(c, w, h, a), w: c.width, h: c.height });
   for (const [kind, G] of Object.entries(PGEO)) { const def = PIECES[kind]; add('@arrows_' + def.glow, G.arrowTex); add('@body_' + def.bodyKey, G.bodyTex); }
   const slotTex = {}; for (const kind of Object.keys(PGEO)) { const def = PIECES[kind]; slotTex[def.arrowSlot] = '@arrows_' + def.glow; slotTex[def.bodySlot] = '@body_' + def.bodyKey; }
@@ -3114,16 +3116,16 @@ function tcBoostTextures(parts, textures) {
 const PMAT = {};
 function tcBoostPreview(g) {
   TC.boostObjs = [];
-  if (!TC.boosts?.length) return;
-  const need = [...new Set(TC.boosts.map(b => b.kind || 'boost'))].filter(k => !PGEO[k]);
+  const all = tcPiecesOf(g); if (!all.length) return;
+  const need = [...new Set(all.map(b => b.kind || 'boost'))].filter(k => !PGEO[k]);
   if (need.length) { if (!TC.dashLoading && S.romfs && !S.romfs.fake) { TC.dashLoading = true; tcDashLoad(romReader()).then(() => tcUpdate(true)).catch(e => toast('Road pieces: ' + e.message, 'err')).finally(() => { TC.dashLoading = false; }); } }
   const tx = c => { const t = new THREE.CanvasTexture(c); t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; };
-  TC.boosts.forEach((b, i) => { const G = PGEO[b.kind || 'boost']; if (!G) return; tcBoostClamp(g, b); const T = boostTris(g, b, G);
+  all.forEach((b, i) => { const G = PGEO[b.kind || 'boost']; if (!G) return; if (!b.auto) tcBoostClamp(g, b); const T = boostTris(g, b, G);
     const k = b.kind || 'boost'; if (!PMAT[k]) PMAT[k] = { a: new THREE.MeshBasicMaterial({ map: tx(G.arrowTex) }), f: new THREE.MeshLambertMaterial({ map: tx(G.bodyTex), side: THREE.DoubleSide }) };
     for (const [L, mat] of [[T.arrow, PMAT[k].a], [T.body, PMAT[k].f]]) {
       if (!L.length) continue;
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(L.flatMap(v => v.p)), 3)); geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(L.flatMap(v => v.n)), 3)); geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(L.flatMap(v => v.uv)), 2));
-      const m = new THREE.Mesh(geo, mat); m.userData.boost = i; m.userData.mmTrack = true; TC.preview.add(m); TC.boostObjs.push(m);
+      const m = new THREE.Mesh(geo, mat); m.userData.mmTrack = true; TC.preview.add(m); if (!b.auto) { m.userData.boost = i; TC.boostObjs.push(m); }
     } });
 }
 function tcBoostList() {
@@ -3161,7 +3163,7 @@ renderer.domElement.addEventListener('pointerdown', e => {
 }
 // glide paths, in the track's space: from the centre-line road's ramps and glide panels, and from ramp / glide panel presets
 function tcGlidePaths(g) {
-  if (!tcImporting()) return g ? glidePaths(g, TC.boosts) : [];
+  if (!tcImporting()) return g ? glidePaths(g, tcPiecesOf(g)) : [];
   const out = [];
   for (const g of TC.qc?.glides || []) out.push(g);   // Quick Create's arches
   for (const p of TC.presets) {
