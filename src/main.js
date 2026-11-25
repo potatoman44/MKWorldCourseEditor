@@ -9,7 +9,7 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.7';
+const EDITOR_VER = 'v1.8';
 import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas } from './newslot.js';
 import { parseSarc as parseSarcM } from './sarc.js';
 import { generate, toWorld, applySections, DEFAULTS as TC_DEFAULTS, DEFAULT_POINTS, LOCK_AFTER, LOCK_BEFORE, SURF } from './trackgen.js';
@@ -2047,7 +2047,7 @@ function tcApplyDesign(d) {
   TC.boosts = (d.boosts || []).map(b => ({ kind: PIECES[b.kind] ? b.kind : 'boost', s: +b.s || 0, x: +b.x || 0, ...(b.len ? { len: +b.len } : {}) }));
   tcSrcChanged();
 }
-const tcVsNote = () => $('#tc_vs').value ? ` (in VS / Time Trials, pick ${VS_STAGES.find(x => x[0] === $('#tc_vs').value)?.[1]})` : TC.fr?.on ? ' (in VS / Time Trials, pick its own icon on the map)' : '';
+const tcVsNote = () => $('#tc_vs').value === '+extra' ? ' (in VS / Time Trials, look for its own icon in the sea on the course map; test)' : $('#tc_vs').value ? ` (in VS / Time Trials, pick ${VS_STAGES.find(x => x[0] === $('#tc_vs').value)?.[1]})` : TC.fr?.on ? ' (in VS / Time Trials, pick its own icon on the map)' : '';
 function tcSave() { try { localStorage.setItem(TC_KEY, JSON.stringify(tcDesign())); } catch {} }
 function tcPush() { TC.hist.push(JSON.stringify({ pts: TC.pts, gp: TC.groundPoly || null })); if (TC.hist.length > 80) TC.hist.shift(); }
 function tcUndo() { if (!TC.hist.length) return; const h = JSON.parse(TC.hist.pop()); if (Array.isArray(h)) TC.pts = h; else { TC.pts = h.pts; TC.groundPoly = h.gp; } TC.gsel = -1; TC.sel = Math.min(TC.sel, TC.pts.length - 1); TC.multi = new Set(); tcUpdate(); }
@@ -2447,7 +2447,7 @@ async function tcBuild(asZip) {
     const nrmOf = id => { const k = [...tcVM().mats.keys()].find(m => tcTexOf(m) === id && (TC.texOver['#nrm:' + m] || tcPresetNrm(m))); const c = k && (TC.texOver['#nrm:' + k]?.canvas || tcPresetNrm(k)); return c ? { get: (l, w, h) => canvasRGBA(c, w, h, true), w: c.width, h: c.height, flipY: !!$('#tc_nflip').checked } : undefined; };
     const BR = tcBright();
     const textures = tcImporting() ? new Map([...new Set([...tcVM().mats.keys()].map(n => tcTexOf(n)).filter(Boolean))].map(n => [n, { get: (l, w, h, a) => brightRGBA(canvasRGBA(tcTexCanvas(n), w, h, a), BR), w: tcTexCanvas(n).width, h: tcTexCanvas(n).height, nrm: nrmOf(n), mix: mixOf(n) }])) : tcBoostTextures(spec.parts, tcCentreTextures(spec.parts));
-    const { files, warnings } = await buildNewSlot(rd, { ...spec, ...tcSkySpec(), docBytes, variants, display, cup: $('#tc_cup').value || null, vsStage: $('#tc_vs').value || null, pictures: tcPicSpec(), picturesStandIn: $('#tc_picsvs').checked, freeRoam: await frSpec(), music: tcMusicSpec().music, textures, minimap: tcMinimapFor, stageType: tcStageType() }, m => busy(m));
+    const { files, warnings } = await buildNewSlot(rd, { ...spec, ...tcSkySpec(), docBytes, variants, display, cup: $('#tc_cup').value || null, vsStage: ($('#tc_vs').value || '').startsWith('+') ? null : ($('#tc_vs').value || null), vsExtra: $('#tc_vs').value === '+extra', pictures: tcPicSpec(), picturesStandIn: $('#tc_picsvs').checked, freeRoam: await frSpec(), music: tcMusicSpec().music, textures, minimap: tcMinimapFor, stageType: tcStageType() }, m => busy(m));
     if (warnings?.length) setTimeout(() => toast('Note: ' + warnings.join(' · '), 'err'), 4500);
     busy('Writing the mod…');
     if (asZip) {
@@ -2489,7 +2489,7 @@ for (const [id, key] of [['#tc_pwall', 'w'], ['#tc_prail', 'r'], ['#tc_pside', '
   for (const i of tcPicked()) { const p = TC.pts[i], st = { ...(p[3] || {}) }; if (v === 'default') delete st[key]; else st[key] = v; if (Object.keys(st).length) p[3] = st; else p.length = 3; }
   tcUpdate(); tcSave();
 };
-$('#tc_vs').append(el('option', { value: '' }, 'No stand-in (in the open world: its own map icon)'), ...VS_STAGES.map(([k, n]) => el('option', { value: k }, 'In place of ' + n)));
+$('#tc_vs').append(el('option', { value: '+extra' }, 'Its own stage, the 31st (test)'), el('option', { value: '' }, 'No stand-in (in the open world: its own map icon)'), ...VS_STAGES.map(([k, n]) => el('option', { value: k }, 'In place of ' + n)));
 $('#tc_vs').value = 'Rainbow_00';
 for (const id of ['tc_name', 'tc_mod', 'tc_cup', 'tc_vs', 'tc_picsvs']) $('#' + id).addEventListener('change', tcSave);
 $('#tc_nflip').addEventListener('change', tcSave);

@@ -591,6 +591,9 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
     if (!walk(r)) throw new Error('icon dict not found'); }));
   // VS and Time Trials: picking this stage on the course map starts the new track instead (Grand Prix keeps the real course)
   if (spec.vsStage) { k = `Gyml/CourseAreaGParam/${spec.vsStage}.game__CourseAreaGParam.bgyml`; rep.set(k, edit(g(k), r => { r.NormalCourse = [T.u32(hCZ)]; })); }
+  // (test) its own stage in VS and Time Trials: the 31st in the course map's list, picked by its own icon
+  if (spec.vsExtra) { k = 'Gyml/UICourseSelectStageList/Normal.game__UICourseSelectStageList.bgyml';
+    rep.set(k, edit(g(k), r => { const nv = x => Number(x && typeof x === 'object' && 'v' in x ? x.v : x); if (!r.StageList.some(x => nv(x) === hSZ)) r.StageList.push(T.u32(hSZ)); })); }
   if (spec.cup) { k = `Gyml/GrandprixCupSettingGParam/${spec.cup}.game__GrandprixCupSettingGParam.bgyml`; rep.set(k, edit(g(k), r => { r.CourseList[0] = { CourseId: T.u32(hCZ) }; })); }
   const newG = sarcAdd(G, add, rep); putZ(`System/GymlArchive/general_format.Product_${V}.sarc.zs`, newG); sizes.set(`System/GymlArchive/general_format.Product_${V}.sarc`, newG.length);
   for (const [kk, m] of Object.entries(P.adds)) {
