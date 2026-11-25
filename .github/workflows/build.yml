@@ -1,11 +1,13 @@
 name: Build
 
 # Every push builds the Windows exe (download it from the run's Artifacts).
-# Pushing a tag like v1.1 also makes a Release with the zip attached.
+# Publishing a Release on GitHub (or pushing a tag like v1.1) attaches the zip to that Release.
 on:
   push:
     branches: [main]
     tags: ['v*']
+  release:
+    types: [published]
   pull_request:
   workflow_dispatch:
 

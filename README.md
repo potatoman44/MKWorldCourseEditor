@@ -35,7 +35,7 @@ npm run build          # the editor page: dist/MKWorld-Course-Editor.html
 ./build-exe.sh         # the Windows exe (the page wrapped in the launcher)
 ```
 
-Pushing to `main` builds the exe on GitHub Actions; pushing a tag like `v1.1` makes a Release with the zip.
+Pushing to `main` builds the exe on GitHub Actions. Publishing a Release (tag `v1.1` and so on) builds it and attaches the zip to the Release.
 
 ## Layout
 
