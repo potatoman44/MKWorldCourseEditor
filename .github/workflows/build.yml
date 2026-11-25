@@ -1,7 +1,7 @@
 name: Build
 
 # Every push builds the Windows exe (download it from the run's Artifacts).
-# Pushing a tag like v95 also makes a Release with the zip attached.
+# Pushing a tag like v1.1 also makes a Release with the zip attached.
 on:
   push:
     branches: [main]
