@@ -1,0 +1,8 @@
+newmtl Guide
+Kd 0.35 0.4 0.5
+newmtl StartLine
+Kd 1 1 1
+newmtl Kart
+Kd 0.24 0.86 0.52
+newmtl KartFront
+Kd 1 0.3 0.3

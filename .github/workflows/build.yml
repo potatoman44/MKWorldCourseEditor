@@ -1,0 +1,45 @@
+name: Build
+
+# Every push builds the Windows exe (download it from the run's Artifacts).
+# Pushing a tag like v95 also makes a Release with the zip attached.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - run: npm ci
+      - run: ./build-exe.sh
+      - name: Package
+        run: |
+          VER=$(grep -o "EDITOR_VER = '[^']*'" src/main.js | cut -d"'" -f2)
+          mkdir -p pkg/MKWorldCourseEditor
+          cp "MKWorldCourseEditor $VER.exe" extras/start_grid.obj extras/start_grid.mtl pkg/MKWorldCourseEditor/
+          (cd pkg && zip -qr "../MKWorldCourseEditor_$VER.zip" MKWorldCourseEditor)
+          echo "VER=$VER" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MKWorldCourseEditor_${{ env.VER }}
+          path: pkg/MKWorldCourseEditor
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: MKWorldCourseEditor_*.zip
+          generate_release_notes: true

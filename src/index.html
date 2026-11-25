@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MK World Course Editor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root { --bg:#14171d; --panel:#1d222b; --line:#2c3340; --text:#dfe5ee; --dim:#8a96a8; --acc:#ff4a5c; --acc2:#4aa3ff; }
+* { box-sizing:border-box; }
+html,body { margin:0; height:100%; background:var(--bg); color:var(--text); font:13px/1.4 system-ui, "Segoe UI", sans-serif; overflow:hidden; }
+button, select, input { font:inherit; color:var(--text); background:#262c37; border:1px solid var(--line); border-radius:6px; padding:5px 9px; }
+button { cursor:pointer; } button:hover { background:#303846; } button.on { background:var(--acc2); border-color:var(--acc2); color:#fff; }
+button.hot { background:var(--acc); border-color:var(--acc); color:#fff; } button.danger:hover { background:#5a2228; }
+input[type=number] { width:100%; min-width:0; padding:4px 4px; font-size:12px; font-variant-numeric:tabular-nums; }
+#top { height:48px; display:flex; align-items:center; gap:8px; padding:0 10px; background:var(--panel); border-bottom:1px solid var(--line); }
+#top .brand { font-weight:800; letter-spacing:.3px; margin-right:6px; white-space:nowrap; } #top .brand i { color:var(--acc); font-style:normal; }
+#top .sp { flex:1; } #course { max-width:260px; } #romfsName { max-width:120px; overflow:hidden; text-overflow:ellipsis; } #modname { width:140px; }
+.grp { display:flex; gap:3px; } #romfsName { color:var(--dim); font-size:12px; white-space:nowrap; }
+#main { position:absolute; top:48px; bottom:24px; left:0; right:0; display:grid; grid-template-columns:260px 1fr 340px; }
+#left, #right { background:var(--panel); overflow:hidden; display:flex; flex-direction:column; }
+#left { border-right:1px solid var(--line); } #right { border-left:1px solid var(--line); }
+#view { position:relative; overflow:hidden; } #view canvas { display:block; }
+#title { font-weight:700; font-size:15px; pointer-events:none; text-shadow:0 1px 3px #000; padding:4px 2px; }
+#wsbar { position:absolute; left:10px; top:8px; display:flex; gap:10px; align-items:center; z-index:4; pointer-events:none; }
+#wstabs { display:none; background:#14171de6; border:1px solid var(--line); border-radius:8px; padding:3px; gap:2px; pointer-events:auto; }
+body.wson #wstabs { display:flex; }
+#wstabs button { border:none; background:transparent; padding:5px 12px; border-radius:6px; font-weight:600; }
+#wstabs button:hover { background:#262c37; } #wstabs button.on { background:var(--acc2); color:#fff; }
+.menu { position:relative; } .menupop { display:none; position:fixed; top:52px; left:0; min-width:250px; background:#1d222b; border:1px solid var(--line); border-radius:8px; padding:6px; box-shadow:0 10px 30px #000a; z-index:500; flex-direction:column; gap:3px; max-height:calc(100vh - 70px); overflow:auto; }
+.menu.open .menupop { display:flex; } .menupop > button { text-align:left; } .menupop hr { border:none; border-top:1px solid var(--line); margin:4px 0; width:100%; }
+.menulabel { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; padding:2px 4px; } .menurow { display:flex; gap:6px; align-items:center; font-size:12px; padding:2px 4px; } .menurow input { flex:1; min-width:0; }
+/* docked side panels (like Track Studio): your track's editors on the left, Quick Create on the right */
+#main { --lw:var(--cvlw, 260px); --rw:var(--cvrw, 340px); grid-template-columns:var(--lw) 1fr var(--rw) !important; }
+body.tcmode #main { --lw:var(--tclw, 380px); --rw:0px; } body.tcmode.qcopen #main { --rw:var(--qcw, 360px); }
+body.tcmode #left > .pane, body.tcmode #left > #outliner { display:none; }
+body.qcopen #inspector, body.qcopen #palwrap { display:none !important; }
+#tcpanel { position:static !important; width:auto !important; max-height:none !important; height:auto !important; flex:1; overflow:auto; border:none !important; border-radius:0 !important; box-shadow:none !important; background:transparent !important; padding:0 12px 16px !important; }
+#qcpanel { position:static !important; width:auto !important; max-height:none !important; height:auto !important; flex:1; overflow:auto; border:none !important; border-radius:0 !important; box-shadow:none !important; background:transparent !important; }
+#qcpanel:not([open]) { display:none; } #tcpanel .pbig, #qcpanel .pbig, .pgrip { display:none !important; }
+#tcpanel .qhead, #qcpanel .qhead { position:sticky; top:0; background:var(--panel); z-index:2; padding-top:10px; }
+#tcpanel [data-ws] { display:none; }
+body.ws-track #tcpanel [data-ws~=track], body.ws-model #tcpanel [data-ws~=model], body.ws-collision #tcpanel [data-ws~=collision], body.ws-paths #tcpanel [data-ws~=paths] { display:block; }
+body.tcimport .tcimp-only { display:block; } .tcimp-only { display:none; } body:not(.tcimport) .imp-only { display:none !important; }
+.split { position:absolute; top:0; bottom:0; width:7px; margin-left:-3px; cursor:col-resize; z-index:6; } .split:hover, .split.on { background:#4aa3ff55; }
+#tc_editmodel { display:none !important; } .legrow { display:flex; align-items:center; gap:8px; font-size:12px; margin:3px 0; } .legrow i { width:14px; height:14px; border-radius:3px; flex:none; border:1px solid #0006; }
+#viewbar { position:absolute; right:10px; top:8px; display:flex; gap:4px; }
+#legend { position:absolute; left:10px; bottom:10px; background:#14171dd9; border:1px solid var(--line); border-radius:8px; padding:6px 8px; display:grid; grid-template-columns:1fr 1fr; gap:2px 12px; font-size:12px; }
+#legend label, .toggles label { display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap; }
+.toggles { position:absolute; right:10px; bottom:10px; background:#14171dd9; border:1px solid var(--line); border-radius:8px; padding:6px 10px; display:flex; gap:12px; font-size:12px; }
+.dot { width:9px; height:9px; border-radius:50%; display:inline-block; flex:none; }
+.pane { padding:8px; border-bottom:1px solid var(--line); } .pane input[type=search] { width:100%; }
+#outliner { flex:1; overflow:auto; padding:2px 6px 10px; }
+#outliner .sec { color:var(--dim); text-transform:uppercase; font-size:11px; letter-spacing:.6px; margin:10px 4px 4px; }
+#outliner summary { cursor:pointer; padding:3px 4px; border-radius:4px; display:flex; align-items:center; gap:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:12px; }
+#outliner summary:hover, .prow:hover { background:#262c37; }
+.cnt { margin-left:auto; color:var(--dim); font-size:11px; padding-left:6px; }
+#outliner .row { padding:2px 4px 2px 26px; cursor:pointer; color:var(--dim); font-size:12px; border-radius:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#outliner .row:hover { color:var(--text); background:#232934; } #outliner .row.sel { background:#24406a; color:#fff; }
+#inspector { padding:10px; overflow:auto; flex:1 1 55%; border-bottom:1px solid var(--line); }
+#inspector h3 { margin:0 0 6px; font-size:14px; word-break:break-all; } #inspector h4 { margin:12px 0 4px; font-size:12px; color:var(--dim); }
+.kv { display:grid; grid-template-columns:105px 1fr; gap:6px; align-items:center; margin:3px 0; } .kv b { color:var(--dim); font-weight:500; font-size:12px; overflow:hidden; text-overflow:ellipsis; }
+.kv.small { font-size:11px; } .mono { font-family:ui-monospace, Consolas, monospace; font-size:11px; word-break:break-all; }
+.vec { display:grid; grid-template-columns:62px 10px 1fr 10px 1fr 10px 1fr; gap:2px; align-items:center; margin:5px 0; }
+.vec label { color:var(--dim); font-size:12px; } .ax { font-weight:700; font-size:11px; text-align:center; } .axX { color:#ff5a5a; } .axY { color:#62d26f; } .axZ { color:#4a8dff; }
+.btns { display:flex; flex-wrap:wrap; gap:5px; margin-top:12px; } .hint { color:var(--dim); font-size:12px; }
+#palwrap { flex:1 1 45%; display:flex; flex-direction:column; min-height:0; }
+#palwrap .pane { display:flex; gap:5px; align-items:center; } #palwrap h4 { margin:0; font-size:12px; white-space:nowrap; }
+#palette { overflow:auto; flex:1; padding:4px 6px; }
+.prow { display:flex; gap:6px; align-items:center; padding:3px 5px; border-radius:4px; cursor:pointer; font-size:12px; white-space:nowrap; overflow:hidden; }
+#status { position:absolute; bottom:0; left:0; right:0; height:24px; background:var(--panel); border-top:1px solid var(--line); display:flex; align-items:center; gap:16px; padding:0 10px; color:var(--dim); font-size:12px; }
+#toasts { position:fixed; right:14px; bottom:34px; display:flex; flex-direction:column; gap:6px; z-index:9; max-width:420px; }
+.toast { background:#2a3140; border:1px solid var(--line); border-left:4px solid var(--acc2); padding:8px 12px; border-radius:6px; box-shadow:0 4px 16px #0008; }
+.toast.err { border-left-color:var(--acc); } .toast.ok { border-left-color:#3ddc84; }
+#busy { display:none; position:fixed; left:50%; top:60px; transform:translateX(-50%); background:#2a3140; padding:8px 16px; border-radius:20px; z-index:9; }
+dialog { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:10px; width:min(900px, 92vw); }
+dialog::backdrop { background:#000a; }
+#rawtext { width:100%; height:60vh; background:#11141a; color:#cfe3ff; border:1px solid var(--line); border-radius:6px; font:12px/1.45 ui-monospace, Consolas, monospace; padding:8px; }
+#rawerr { color:var(--acc); min-height:18px; } .row-end { display:flex; gap:6px; justify-content:flex-end; align-items:center; }
+#helpdlg li { margin:3px 0; } kbd { background:#2a3140; border:1px solid var(--line); border-radius:4px; padding:0 5px; font-size:12px; }
+#qcpanel { position:absolute; top:44px; right:10px; width:340px; background:#1d222bf2; border:1px solid var(--line); border-radius:10px; padding:0 12px 12px; box-shadow:0 8px 24px #0009; max-height:calc(100% - 100px); overflow:auto; z-index:3; }
+#qcpanel summary { display:none; } #qcpanel.drawing .qhide, #qcpanel.drawing #qc_lap, #qcpanel.drawing #qc_sel { display:none; } .qdraw { display:none; margin:4px 0; } #qcpanel.drawing .qdraw { display:block; }
+#qc_draw.hot { background:#f5c542; border-color:#f5c542; color:#111; } button { white-space:nowrap; } .pgrip { position:absolute; z-index:6; display:none; touch-action:none; } .pgrip.l { width:8px; cursor:ew-resize; } .pgrip.b { height:8px; cursor:ns-resize; } .pgrip.c { width:14px; height:14px; cursor:nesw-resize; }
+.pgrip:hover, .pgrip.on { background:#4aa3ff55; border-radius:4px; } .qhead .pbig { margin-left:auto; margin-right:6px; } .qhead { display:flex; justify-content:space-between; align-items:center; padding:10px 0 4px; font-size:14px; } .qhead button { padding:2px 8px; }
+.qsec { margin:10px 0 6px; color:var(--dim); text-transform:uppercase; font-size:11px; letter-spacing:.5px; display:flex; justify-content:space-between; }
+.qbtns { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:6px; } .qck { display:flex; gap:6px; align-items:center; font-size:12px; margin:3px 0; cursor:pointer; white-space:nowrap; }
+.qgrid { display:grid; grid-template-columns:auto 70px auto 70px; gap:6px; align-items:center; font-size:12px; margin-top:6px; }
+.qrow { display:grid; grid-template-columns:96px auto 52px auto auto; gap:5px; align-items:center; font-size:12px; margin:4px 0; color:var(--dim); } .qrow .qck { color:var(--text); } .qrow .rep { color:var(--dim); }
+#qcpanel input[type=number] { padding:3px 5px; }
+.snapw { display:flex; gap:5px; align-items:center; white-space:nowrap; font-size:12px; cursor:pointer; padding:0 4px; } .snapw.off { opacity:.45; }
+#status .sp { flex:1; }
+#outdated { position:fixed; top:0; left:0; right:0; z-index:20; background:#b4232f; color:#fff; padding:10px 14px; gap:12px; align-items:center; font-size:13px; } #outdated button { margin-left:auto; background:#fff; color:#b4232f; font-weight:600; }
+#top { overflow-x:auto; overflow-y:hidden; scrollbar-width:auto; scrollbar-color:#9aa6b8 #12151b; height:58px !important; padding-bottom:0; }
+#top > * { flex-shrink:0; } #top .sp { flex:1 0 8px; }
+#main { top:58px !important; }
+.topnav { position:fixed; top:0; height:46px; width:34px; z-index:6; display:none; align-items:center; justify-content:center; font-size:22px; font-weight:700; color:#fff; cursor:pointer; border:none; border-radius:0; padding:0; }
+.topnav.show { display:flex; }
+#navL { left:0; background:linear-gradient(90deg,#1d222b 60%,#1d222b00); } #navR { right:0; background:linear-gradient(270deg,#1d222b 60%,#1d222b00); }
+.topnav:hover { color:var(--acc2); }
+#tcpanel { position:absolute; top:44px; right:10px; width:360px; background:#1d222bf2; border:1px solid var(--line); border-radius:10px; padding:0 12px 12px; box-shadow:0 8px 24px #0009; max-height:calc(100% - 60px); overflow:auto; z-index:4; }
+#tcpanel input[type=number] { padding:3px 5px; } #tcpanel .tgrid { display:grid; grid-template-columns:96px 1fr; gap:6px; align-items:center; font-size:12px; margin:4px 0; }
+#tcpanel input[type=text], #tcpanel select { width:100%; padding:3px 6px; } .mrow.t { grid-template-columns:30px 1fr 150px; } .mrow.tt { grid-template-columns:30px 1fr auto 130px; } .mflags { display:flex; gap:3px; } .mflag { padding:1px 5px; font-size:11px; border-radius:4px; } .mflag.on { background:var(--acc2); border-color:var(--acc2); color:#fff; } .mrow.t.iconly { grid-template-columns:30px 1fr 150px; } .mrow.t.tsurf { grid-template-columns:30px 48px 1fr 58px; } .mrow.t.tpic { grid-template-columns:30px 1fr auto; } .mrow.tpic .qbtns { margin:0; } .mrow.tsurf input { width:100%; padding:2px 4px; } .ticon { width:28px; height:28px; border-radius:5px; border:1px solid var(--line); background:#262c37; display:flex; align-items:center; justify-content:center; color:var(--dim); cursor:pointer; position:relative; font-weight:700; } .ticon img { width:100%; height:100%; object-fit:cover; border-radius:4px; transition:transform .12s; transform-origin:left center; } .ticon:hover img { transform:scale(5); position:relative; z-index:10; box-shadow:0 6px 20px #000c; border-radius:3px; } .mrow { display:grid; grid-template-columns:1fr 150px; gap:6px; align-items:center; font-size:12px; margin:3px 0; } .mrow span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .mrow select { padding:2px 4px; } body.tcimport .gen-only { opacity:.4; } body.tcimport .gen-only2, body.tcimport .gen-hide { display:none !important; } body.tcmode #qcpanel { left:10px; right:auto; z-index:5; } .ohead { display:flex; align-items:center; justify-content:space-between; gap:8px; } .ohead h3 { margin:0; } .qhelp { width:26px; height:26px; padding:0; border-radius:50%; font-weight:700; flex:none; } .qhelp.on { background:var(--acc2); border-color:var(--acc2); color:#fff; } .ohelp { background:#1b2130; border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin:8px 0; font-size:12px; line-height:1.45; } .ohelp p { margin:4px 0; } .ohelp ul { margin:2px 0 4px 16px; padding:0; } .kv.unset input { opacity:.55; } .kv.unset b { opacity:.7; } #tc_add.on, #tc_wpick.on, #tc_branch.on, #tc_edit.on, #tc_additem.on { background:#f5c542; border-color:#f5c542; color:#111; }
+.tcbtn { border-color:#f5c542; }  body.tcmode #legend, body.tcmode .toggles { display:none; }
+</style>
+</head>
+<body>
+<div id="top">
+  <div class="brand" title="Version 96: Quick Create fences are the game objects only (no invisible wall); Chain Chomps start just above the track in Free Roam">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v96</span></div>
+  <div class="menu" id="filemenu"><button id="filebtn" title="Open your dump, open a course file, save your edits as a mod">File ▾</button>
+    <div class="menupop">
+      <button id="openRomfs" title="The game's romfs folder from your dump">Open RomFS…</button><button id="openBase" title="Optional: the base game's romfs (version 1.0). An update's romfs only has the files that changed, so objects whose models never changed (most open-world scenery, like the Toad houses) need the base game's files to show their models.">Base game…</button>
+      <button id="openFile" title="Open a single .bcett.byml(.zs) file">Open file…</button>
+      <hr><div class="menulabel">Course edits (Map)</div>
+      <label class="menurow" title="Folder name for the mod (letters, numbers, - and _)">Mod name <input id="modname" placeholder="Mod name" value="MyCourseEdit"></label>
+      <button id="save" title="Ctrl+S: write a mod into the recomp's mods folder">Save as mod</button>
+      <button id="dl" title="Download this course's .bcett.byml.zs">Download file</button>
+      <hr><div class="menulabel">Your track</div>
+      <button id="fm_trnew" title="Start a new track project">New track…</button><button id="fm_tropen" title="Open a .mkwtrack.zip project">Open track project…</button><button id="fm_trsave" title="Save your track project as one .mkwtrack.zip">Save track project</button><button id="fm_trbuild" title="Build your track into mkw-recomp\mods">Build track mod</button>
+    </div></div>
+  <button id="reopen" class="hot" style="display:none" title="Open the RomFS folder you used last time">Reopen last RomFS</button>
+  <select id="course"><option value="">— open the RomFS first —</option></select>
+  <input id="fileInput" type="file" accept=".zs,.byml" hidden>
+  <span id="romfsName"></span>
+  <span class="sp"></span>
+  <label id="snapWrap" class="snapw" title="Moved, added and Quick Create objects land on the track surface (End drops the selection)"><input type="checkbox" id="snap" checked>Snap to ground</label>
+  <button id="minimap" title="Draw this course's minimap from its lap paths">Minimap…</button>
+  <button id="quick" title="Lay out a lap path, CPU routes, item boxes and a start grid from one guide line">Quick Create</button>
+  <button id="tcOpen" class="tcbtn" title="Your own brand-new track (model, collision, paths) in its own new slot. Click again to go back to the course you had open.">My track</button><button id="tc_editmodel" class="tcbtn" style="display:none" title="Back to the Track Creator: model, materials, placement, Quick Create">Edit Model</button><span id="cv_routebox" style="display:none"><select id="cv_route" title="Which of the track's routes you're editing (each is its own lap type in game)"></select><button id="cv_routenew" title="Make a new route from a copy of this one">+ Route</button></span>
+  <div class="grp"><button id="undo" title="Ctrl+Z">↶</button><button id="redo" title="Ctrl+Y">↷</button></div>
+  <div class="grp"><button data-mode="translate" title="Move (1)">Move</button><button data-mode="rotate" title="Rotate (2)">Rotate</button><button data-mode="scale" title="Scale (3)">Scale</button><button id="space" title="L: world / local axes">World</button></div>
+  <button id="help">?</button>
+</div>
+<button class="topnav" id="navL" title="Scroll the menu left">‹</button><button class="topnav" id="navR" title="Scroll the menu right">›</button>
+<div id="main">
+  <div id="left">
+    <div class="pane"><input id="filter" type="search" placeholder="Filter objects and paths…"></div>
+    <div id="outliner"></div>
+  </div>
+  <div id="view">
+    <div id="wsbar"><span id="wstabs"><button data-ws="track" title="The track's name, cup, music, pictures, Free Roam and Build">Track</button><button data-ws="model" title="How it looks: your model or the centre-line road, materials, textures, preset models, boost panels">Model</button><button data-ws="collision" title="What it's made of in game: collision types per material">Collision</button><button data-ws="paths" title="Lay out the lap path, CPU routes, items and start grid (Quick Create), widths, alternate routes, grind rails">Paths</button><button data-ws="map" title="Objects and every path, like any course">Map</button></span><div id="title"></div></div>
+    <div id="viewbar"><button id="frameAll" title="Show the whole course">Frame all</button></div>
+    <div id="tcpanel" style="display:none">
+      <div class="qhead"><b id="tc_wstitle">Track</b><button id="tc_close" title="Close your track (back to the course you had open)">✕</button></div>
+      <div data-ws="track">
+      <div class="hint">Your brand-new track, in its own slot. The tabs above the view are its editors: <b>Model</b> (how it looks), <b>Collision</b> (what it's made of), <b>Paths</b> (lap path, CPU routes, items, start grid) and <b>Map</b> (objects and every path, like any course). This page has the track's settings and Build.</div>
+      <div class="qsec">Track</div>
+      <div class="tgrid"><span>Name in game</span><input id="tc_name" type="text" value="Custom Track" maxlength="40"></div>
+      <div class="tgrid"><span>Mod name</span><input id="tc_mod" type="text" value="CustomTrack" title="Folder name in mkw-recomp\mods"></div>
+      <div class="tgrid"><span>Test it in</span><select id="tc_cup"><option value="Kinoko">Mushroom Cup, race 1</option><option value="Flower">Flower Cup, race 1</option><option value="Star">Star Cup, race 1</option><option value="Special">Special Cup, race 1</option><option value="">No cup</option></select></div>
+      <div class="tgrid"><span>VS &amp; Time Trials</span><select id="tc_vs" title="In VS and Time Trials, picking this course on the map starts your track instead. Grand Prix still has the real course."></select></div>
+      <div class="tgrid"><span>Laps</span><input id="tc_laps" type="number" value="3" min="1" max="9" style="width:70px"></div>
+      <div class="qbtns"><button id="tc_check" title="Test-builds a track in memory (saves nothing) and tells you whether your dump has everything the Track Creator needs, with the game version. The result is copied so you can share it.">Check my dump</button><button id="tc_grid" title="A model of the start grid (1 unit = 1 m, Y up, race heads -Z) to line your road up with in Blender etc.">Start grid .obj</button></div>
+      <div class="tgrid"><span>Music</span><select id="tc_music"><option value="">Default (as before)</option></select></div>
+      <div class="tgrid" id="tc_hostrow" style="display:none"><span>In place of</span><select id="tc_host" title="Which stage's race music the song takes over"></select></div>
+      <div id="tc_musichint" class="hint"></div>
+      <div class="tgrid"><span>Time of day</span><select id="tc_time" title="Fixes the time of day for races on this track (Rainbow Road does this for its night)"><option value="">Any (the game decides)</option><option value="7">Morning</option><option value="12">Noon</option><option value="18">Evening</option><option value="21">Night</option></select></div>
+      <div class="qsec">Pictures</div>
+      <div id="tc_pics"></div>
+      <label class="qck"><input type="checkbox" id="tc_picsvs">Show them for the VS / Time Trials course too</label>
+      <div class="hint">Your own pictures for the course menus, loading screen and results (course picture), the course map and Grand Prix screens (map picture, with a see-through background) and the round course badge. "Show them for the VS / Time Trials course too" also paints them over the course your track stands in for, so they show wherever the game shows that course.</div>
+      <div class="qsec">Free Roam</div>
+      <label class="qck"><input type="checkbox" id="tc_fr">Put it in the open world</label>
+      <div class="hint">It races there in Grand Prix, VS and Time Trials (with the open world round it, like the game's own courses), and you can drive to it in Free Roam.</div>
+      <div class="qbtns"><button id="tc_frmap" title="Choose where your track goes in the open world">Place on the map…</button></div>
+      <div class="hint" id="tc_frinfo"></div>
+      <div class="qsec">Build</div>
+      <label class="hint" title="On: the model's buffers are made bigger, so the track is one model (or a few: one per 13 textures). Off: the old way, many small parts that each fit the base model as it is."><input type="checkbox" id="tc_big" checked> Few big model parts (like the game's own courses)</label>
+      <div id="tc_stats" class="hint"></div>
+      <div id="tc_warn" style="color:#ff8a4a;font-size:12px"></div>
+      <div class="qbtns" style="margin-top:8px"><button id="tc_build" class="hot" title="Write the mod into mkw-recomp\mods">Build mod</button><button id="tc_zip" title="Download the mod as a .zip instead">Download .zip</button><button id="tc_new" title="Clear everything and start a new track (save the current one first if you want to keep it)">New project</button><button id="tc_export" title="Save everything (design, paths, music, your model, collision model and textures) in one .mkwtrack.zip">Save project</button><button id="tc_import" title="Open a .mkwtrack.zip project, or the .zip of a mod built with the Track Creator (v23 and later)">Open project</button></div>
+      <div class="hint">Turn off any other mod that uses the test slot (TestOval_NewSlot_GP…) before you turn this one on.</div>
+      <input id="tc_file" type="file" accept=".zip,.json" hidden>
+      </div>
+      <div data-ws="model">
+      <div class="tgrid"><span>Road from</span><select id="tc_src"><option value="gen">Built from the centre line</option><option value="import">My own model (OBJ / FBX / DAE)</option></select></div>
+        <div id="tc_imp" style="display:none">
+        <div class="qbtns"><button id="tc_vis" class="hot" title="The model you see. Pick its .mtl and texture images along with it (select them all in the file window)">Import model…</button><button id="tc_addtex" title="Pick texture images (and the .mtl) you didn't select when you imported the model. They're matched to its materials by file name.">Add textures…</button></div>
+        <div id="tc_impinfo" class="hint"></div>
+          <div class="qsec">Placement</div>
+        <div class="qgrid"><span>Scale</span><input id="tc_sc" type="number" value="1" step="0.1" min="0.0001"><span>Turn (°)</span><input id="tc_rot" type="number" value="0" step="90"></div>
+        <div class="qgrid"><span>Move X</span><input id="tc_ox" type="number" value="0" step="1"><span>Move Z</span><input id="tc_oz" type="number" value="0" step="1"></div>
+        <div class="qgrid"><span>Move Y</span><input id="tc_oy" type="number" value="0" step="0.5"><span></span><label class="qck"><input type="checkbox" id="tc_zup">Z is up</label></div>
+        <div class="qgrid"><span>Tilt fwd/back</span><input id="tc_tx" type="number" value="0" step="0.5" title="Degrees round the X axis (pivot: the start line)"><span>Tilt sideways</span><input id="tc_tz" type="number" value="0" step="0.5" title="Degrees round the Z axis (pivot: the start line)"></div>
+        <div class="qbtns"><button id="tc_level" title="Measure how the model leans and tilt it back so its ground is level (the paths you made with Quick Create tilt with it)">Level the track</button></div>
+        <label class="qck"><input type="checkbox" id="tc_usetex" checked>Use the model's textures in game</label>
+        <div class="hint">Select the model together with its .mtl and texture images in the file window. Click a material's picture (or ?) to choose its image yourself.</div>
+        <div class="qsec">Look in game (per material)</div><div id="tc_slots"></div>
+        <label class="qck" title="Normal maps come in two styles: OpenGL (Blender, most free textures) and DirectX (some game rips and Substance exports). If bumps look dented instead of raised in game, tick this."><input type="checkbox" id="tc_nflip">Normal maps are DirectX style (flip green)</label>
+        <div class="qsec">Preset models</div>
+        <div class="hint">Pieces of the game's own scenery, read from your game files and added into your model (they're built with it). They go in at the middle of the view. Click one in the 3D view to move, turn (2) or resize (3) it with the gizmo, like map objects. They become fixed parts of the course model when the mod is built.</div>
+        <div class="qbtns"><select id="tc_presetkind" style="flex:1"></select><button id="tc_presetadd">Add</button></div>
+        <div id="tc_presetlist"></div>
+        </div>
+      <input id="tc_visfile" type="file" multiple accept=".obj,.fbx,.dae,.mtl,.png,.jpg,.jpeg,.bmp,.gif,.webp,.tga" hidden><input id="tc_colfile" type="file" multiple accept=".obj,.fbx,.dae,.mtl" hidden><input id="tc_addtexfile" type="file" multiple accept=".mtl,.png,.jpg,.jpeg,.bmp,.gif,.webp,.tga" hidden><input id="tc_texfile" type="file" accept=".png,.jpg,.jpeg,.bmp,.gif,.webp,.tga" hidden>
+      <div class="qsec gen-only2">Centre line <span id="tc_ptinfo" class="hint"></span></div>
+      <div class="qbtns gen-hide"><button id="tc_add" title="Then click the ground: the point goes into the nearest part of the loop">Add points</button><button id="tc_del" title="Delete the selected point (Delete key)">Delete point</button><button id="tc_undo" title="Ctrl+Z">Undo</button><button id="tc_reset" title="Start again from the default oval">Reset</button></div>
+      <div class="tgrid gen-hide"><span>Point height</span><span style="display:flex;gap:4px"><input id="tc_h" type="number" step="0.5" value="0" style="flex:1;min-width:0" title="Height of the selected point above the start line (m)"><button id="tc_sink" title="Put the selected point under the water (4 m below the water level). Needs the track placed in the open world.">Under water</button></span></div>
+      <div class="tgrid gen-hide"><span>Point X / Z</span><span id="tc_xz" class="hint">–</span></div>
+      <div class="qgrid gen-only gen-hide"><span>Walls here</span><select id="tc_pwall" style="grid-column:span 3" title="The walls from the picked point(s) to the next point"><option value="default">Normal wall (the height below)</option><option value="none">No wall</option><option value="short">Short wall (1.5 m)</option><option value="tall">Tall wall (5 m)</option><option value="tunnel">Tunnel (8 m, with a roof)</option><option value="mixed" hidden>(they differ)</option></select></div>
+      <div class="qgrid gen-only gen-hide"><span>Rails here</span><select id="tc_prail" style="grid-column:span 3" title="Grind rails on the wall tops from the picked point(s) to the next point (left and right are the way you drive)"><option value="default">No rails</option><option value="left">On the left wall</option><option value="right">On the right wall</option><option value="both">On both walls</option><option value="mixed" hidden>(they differ)</option></select></div>
+      <div class="hint gen-only gen-hide" id="tc_pcount"></div>
+      <div class="qsec gen-hide">Road</div>
+      <div class="qgrid gen-hide"><span>Road width</span><input id="tc_width" type="number" value="20" min="6" step="1"><span>Grass edge</span><input id="tc_shoulder" type="number" value="3" min="0" step="0.5"></div>
+      <div class="qgrid gen-only gen-hide"><span title="The walls' height where a point is left on Normal wall (0: no walls there)">Normal wall (m)</span><input id="tc_wall" type="number" value="1.5" min="0" step="0.5"><span>Detail (m)</span><input id="tc_seg" type="number" value="5" min="2" max="20" step="0.5" title="Length of each road piece: smaller is smoother but uses more parts"></div>
+      <label class="qck gen-only gen-hide"><input type="checkbox" id="tc_ground" checked>Grass ground under the whole track</label>
+      <div class="qbtns gen-only gen-hide"><button id="tc_gdraw" title="Click round the ground's outline on the ground (Backspace takes a point back, Enter or Done finishes, Esc cancels)">Draw the ground's shape</button><button id="tc_gsquare" title="Back to a square round the track">Square</button></div>
+      <div class="hint gen-only gen-hide" id="tc_ginfo"></div>
+      <div class="qgrid gen-only gen-hide"><label class="qck" style="grid-column:span 2" title="A sand border round the grass ground, sloping from its edge down into the water (4 m under it when the track is in the open world, else 8 m down), so you can drive in from the sea in Free Roam. Needs the grass ground."><input type="checkbox" id="tc_beach">Sand beach round the ground</label><span>Width (m)</span><input id="tc_beachw" type="number" value="30" min="4" step="2"></div>
+      <div class="qsec gen-only gen-hide">Textures <span id="tc_surfnote" class="hint"></span></div>
+      <div id="tc_surftex" class="gen-only gen-hide"></div>
+      <div class="hint gen-only gen-hide">Pictures from Mario Bros. Circuit, Bowser's Castle, Rainbow Road, Desert Hills and DK Spaceport, read from your dump. They follow the road round bends. The number is how many metres one copy covers (empty = its usual size, 0 = stretched across).</div>
+      <div class="qsec gen-hide">Boost panels and glider ramps</div>
+      <div class="hint gen-hide">The game's boost panel, glide panel and glider ramp, built into the road's model with their own collision (boost on the panel's arrows; the ramp launches you into a glide off its top, like the game's), so no map object is needed. Ramps and glide panels also get a glide path (the light blue line and boxes): where gliding karts and CPUs fly; set how far it goes with glide. Pick one, press Place and click on the road; change where it sits with the numbers (metres along the road from the start line, and metres left of the middle; negative is right).</div>
+      <div class="qbtns gen-hide"><select id="tc_boostkind" style="width:auto"></select><button id="tc_boostplace" title="Then click on the road">Place</button><button id="tc_boostadd" title="Puts one on the road nearest the middle of the view">Add at the view's middle</button></div>
+      <div id="tc_boostlist" class="gen-hide"></div>
+      <div class="qsec">World terrain</div>
+      <div class="hint">The open world's real ground, read from your game files, so you can line your track up with it. It's the ground karts actually drive on (the game's collision), so Exact matches the game to the centimetre. Only the area you choose is read; the lower details trade accuracy for fewer triangles over big areas. It's just for reference: it isn't added to your track.</div>
+      <div class="qbtns"><button id="tc_trmap" title="Choose which part of the open world to load">Choose area…</button><button id="tc_trload" title="Read the chosen area's ground from your RomFS">Load</button></div>
+      <div class="tgrid"><span>Detail</span><select id="tc_trdetail"><option value="0">Exact: the game's own ground (~11,000 triangles a tile)</option><option value="2">Very high (4 m squares, 8,192 a tile)</option><option value="4">High (8 m, 2,048 a tile)</option><option value="8">Medium (16 m, 512 a tile)</option><option value="16">Low (31 m, 128 a tile)</option></select></div>
+      <label class="qck"><input type="checkbox" id="tc_trshow" checked>Show the terrain</label>
+      <div class="hint" id="tc_trinfo"></div>
+      </div>
+      <div data-ws="collision">
+        <div class="hint">What each surface is made of in game. The view shows the collision, coloured by type<span class="gen-only2">. The centre-line road makes its own: road, walls, grass, sand and rails</span>.</div>
+        <div id="tc_impc" style="display:none">
+        <div class="qbtns"><button id="tc_col" class="hot" title="Optional: a simpler model used only for collision">Collision model…</button><button id="tc_colclear" title="Use the visible model for collision too">No separate collision</button></div>
+          <div id="tc_colinfo" class="hint"></div>
+        <div class="qsec">Collision (per material)</div><div id="tc_surfs"></div>
+        </div>
+        <div class="qsec">Colours</div><div id="tc_collegend"></div>
+      </div>
+      <div data-ws="paths">
+        <div class="qbtns"><button id="tc_qc" class="hot imp-only" title="Lay out the lap path, CPU routes, item boxes and start grid from one guide line">Quick Create</button><button id="tc_finish" title="Open your track in the Map editor: add objects and edit every path, like any course">Objects &amp; map editor →</button><button id="tc_minimap" title="The minimap generator for this track: it's drawn from the lap path every time you build">Minimap…</button></div>
+        <div class="hint gen-only2">The centre-line road lays out its own lap path, CPU route, item boxes and start grid as you shape it (Model tab). Set the item rows here; the Map tab edits every path and object.</div>
+        <label class="qck imp-only"><input type="checkbox" id="tc_snapm" checked>Points, paths and items sit on the model</label>
+        <div class="tcimp-only">
+        <div class="hint"><b>Quick Create</b> (the button above) lays out the lap path, CPU routes, item boxes and start grid on your model: <i>Draw guide</i>, click along your road from the start line, then <i>Create</i>. Then fine-tune them here.</div>
+        </div>
+      <div id="tc_paths" style="display:none">
+        <div class="qsec">Edit points &amp; objects</div>
+        <div class="qbtns"><button id="tc_edit" title="Shows a handle on every lap point, CPU route point, item box and start spot: drag to move">Edit</button><button id="tc_additem" title="Click the road to drop item boxes">Add item boxes</button><button id="tc_ins" title="Add a point after the selected path point (Insert key)" disabled>Insert point</button><button id="tc_edel" title="Remove the selected point or item box (Delete key)" disabled>Delete</button></div>
+        <div id="tc_einfo" class="hint"></div>
+        <div class="qsec">Lap path</div>
+        <div class="qgrid"><span>Width everywhere</span><input id="tc_lapw" type="number" min="2" step="1" title="Sets the whole lap path (and the alternate routes) to this width, clearing widths set per point"><span></span><button id="tc_wpick" title="Then click the lap path to pick a point; Shift-click a second point to pick the stretch between">Pick points</button></div>
+        <div id="tc_wsel" style="display:none">
+          <div class="hint" id="tc_wselinfo"></div>
+          <div class="qgrid"><span>Width here</span><input id="tc_ptw" type="number" min="2" step="1" title="Type a width and press Enter (or use the arrows / mouse wheel)"><span>Ease over</span><input id="tc_wblend" type="number" value="3" min="0" max="30" title="How many points either side blend into the new width"></div>
+        </div>
+        <div class="hint">The lap path's width is how far off the line karts can drive and still count as on course. The dark green lines show its edges.</div>
+        <div class="qsec">Alternate routes <span id="tc_brinfo" class="hint"></span></div>
+        <div class="qbtns"><button id="tc_branch" title="Click along the other road: first on the lap path where it splits off, last where it joins back. Enter to finish.">Add alternate route</button><button id="tc_brdel" title="Remove the alternate route added last">Remove last</button></div>
+        <div class="hint">Each alternate route gets its own lap path (pink) with the same checkpoints as the stretch it skips, its own CPU routes and a row of item boxes, linked in where it splits off and rejoins.</div>
+      </div>
+      <div class="qsec gen-hide">Items</div>
+      <div class="qgrid gen-hide"><span>First row at</span><input id="tc_ifirst" type="number" value="90" min="0" step="10"><span>Every (m)</span><input id="tc_ievery" type="number" value="160" min="0" step="10"></div>
+      <div class="qgrid gen-hide"><span>Boxes per row</span><input id="tc_iper" type="number" value="4" min="0" max="8"><span></span><label class="qck"><input type="checkbox" id="tc_coins" checked>Coins</label></div>
+        <div class="tcimp-only">
+        <div class="qsec">Grind rails</div>
+        <div class="hint">Rail paths (the game's RailSlidePath) along your model's rails, fence tops, pipes or edges: karts can grind along them. Press Draw a rail, then click along the top of the rail in your model, in order (Backspace takes the last point back, Enter or Done finishes, Esc cancels). Your model gives the rail its look and collision: like the game's rails, give it a flat top (Road – metal works) and draw the path on that top surface, along its middle.</div>
+        <div class="qbtns"><button id="tc_raildraw">Draw a rail</button></div>
+        <div id="tc_raillist"></div>
+        </div>
+      <div class="qsec">Routes</div>
+      <div class="tgrid" style="margin-top:6px"><span>Route</span><select id="tc_route" title="A is the main course. Extra routes (B, C…) share the model with their own lap path, start and objects; in game they're the track's lap types, like Crown City's variants (1.8)"></select></div>
+      <div class="qbtns"><button id="tc_routenew" title="Copy the route you have open into a new one">New route</button><button id="tc_routeren">Rename</button><button id="tc_routedel">Delete</button></div>
+      <div class="hint" id="tc_finishinfo">The Map tab opens your track like any course, to add objects and edit every path.</div>
+      </div>
+      <div data-ws="track model collision paths" class="tcview">
+        <div class="qsec">View</div>
+      <label class="qck"><input type="checkbox" id="tc_water" checked>Show the water level</label>
+      <label class="qck" title="Shows the track as the game will: a day sky, the sea, and the open world's ground round it (from the game's height map, in 32 m squares). Faces show only from the front unless the material is 2-sided, and only see-through materials get cut-outs."><input type="checkbox" id="tc_game">Game look (sky, sea and ground)</label>
+      </div>
+    </div>
+    <details id="qcpanel"><summary></summary>
+      <div class="qhead"><b>Quick Create</b><button id="qc_close" title="Close">✕</button></div>
+      <div class="qsec">1 · Guide line <span id="qc_count" class="hint"></span></div>
+      <div class="qbtns"><button id="qc_draw">Draw guide</button><button id="qc_lap" title="Follow the course's current lap path">Use lap path</button><button id="qc_sel" title="Follow the path of the selected point">Use selected path</button><button id="qc_clear">Clear</button></div>
+      <div class="qdraw hint">Click along the road in driving order. Right-click or Backspace removes the last point · Enter or the yellow button when done · Esc cancels</div>
+      <div class="qhide">
+      <label class="qck"><input type="checkbox" id="qc_snapH" checked>Snap heights to the course's paths &amp; objects</label>
+      <label class="qck"><input type="checkbox" id="qc_snapObj">Clicking an object snaps to it</label>
+      <label class="qck"><input type="checkbox" id="qc_closed" checked>Loop (track joins back to the start)</label>
+      <div class="qgrid"><span>Lap width</span><input id="qc_width" type="number" value="30" min="4"><span>Point spacing</span><input id="qc_spacing" type="number" value="25" min="4"></div>
+      <div class="qsec">2 · Points <span id="qc_pwho" class="hint"></span></div>
+      <div class="hint" style="margin:2px 0 4px">Click a yellow guide point to change it (Ctrl+click for more). With none picked, these are the settings each new point gets. A point's settings cover the stretch from it to the next point.</div>
+      <div class="qbtns"><button id="qc_pall">Pick all</button><button id="qc_pnone">Pick none</button></div>
+      <div class="qgrid" style="grid-template-columns:auto 1fr"><span>Road width (m)</span><input id="qc_pw" type="number" min="4" step="1" placeholder="lap width" title="How wide the road is here. Empty: the lap width above. Widths blend smoothly from point to point.">
+      <span>Fences</span><select id="qc_pfence" title="Fences along the edge of the road from this point to the next (your left/right as you drive)"><option value="none">None</option><option value="left">Left side</option><option value="right">Right side</option><option value="both">Both sides</option></select></div>
+      <label class="qck" title="An arched glide from this point to the next: a glide path through the air, with a glide panel where it starts"><input type="checkbox" id="qc_pglide">Glide to the next point</label>
+      <div id="qc_pglideopts" class="qgrid" style="grid-template-columns:auto 60px;margin-left:20px"><span>Arch height (m)</span><input id="qc_parch" type="number" value="15" min="2" step="1" title="How high the glide goes above the road, at its middle">
+      <label class="qck" style="grid-column:1/3" title="Puts the game's glide panel on the road at this point, which is what starts the glide"><input type="checkbox" id="qc_ppanel" checked>Glide panel at the start</label>
+      <label class="qck" style="grid-column:1/3" title="The game's floating arrow signs with propellers, either side of the glide, pointing the way the road goes after you land"><input type="checkbox" id="qc_pprops">Propeller arrow signs</label></div>
+      <div class="qgrid" style="grid-template-columns:auto 1fr"><span>Fence type</span><select id="qc_fencekind" title="Which of the game's fences (all are 20 m pieces)"><option value="CmnObj_Guardrail001_A_00">Guard rail</option><option value="CmnObj_Guardrail000_A_00">Guard rail (other style)</option><option value="CmnObj_FenceWood000_A_00">Wooden fence</option></select>
+      <span>Arrow signs</span><select id="qc_propkind"><option value="BannerFlag000">Banner flags</option><option value="Electric000">Electric</option></select></div>
+      <div class="qsec">3 · What to make</div>
+      <div class="qrow"><label class="qck"><input type="checkbox" id="qc_doLap" checked>Lap path</label><span>checkpoint every</span><input id="qc_cpEvery" type="number" value="4" min="1"><span>pts</span><label class="qck rep"><input type="checkbox" id="qc_repLap" checked>replace</label></div>
+      <div class="qrow"><label class="qck"><input type="checkbox" id="qc_doRoute" checked>CPU routes</label><span>lanes</span><input id="qc_lanes" type="number" value="1" min="1" max="5"><span></span><label class="qck rep"><input type="checkbox" id="qc_repRoute" checked>replace</label></div>
+      <div class="qrow" title="CPU / item routes are narrower than the lap path, like the game's own (theirs are about a third of the road). This is all the lanes together."><span></span><span>route width</span><input id="qc_routePct" type="number" value="40" min="5" max="100"><span>% of road</span></div>
+      <div class="qrow"><label class="qck"><input type="checkbox" id="qc_doItems" checked>Item boxes</label><span>row every</span><input id="qc_itemEvery" type="number" value="250" min="20"><span>units</span><label class="qck rep"><input type="checkbox" id="qc_repItems" checked>replace</label></div>
+      <div class="qrow"><span></span><span>per row</span><input id="qc_itemPer" type="number" value="4" min="1" max="8"><span>first at</span><input id="qc_itemFirst" type="number" value="150" min="0" style="width:56px"></div>
+      <div class="qrow"><label class="qck"><input type="checkbox" id="qc_doStart">Start grid</label><span>karts</span><input id="qc_startCount" type="number" value="24" min="1" max="24"><span></span><label class="qck rep"><input type="checkbox" id="qc_repStart" checked>replace</label></div>
+      <div id="qc_sum" class="hint" style="margin:8px 0"></div>
+      <div class="qbtns"><button id="qc_create" class="hot">Create</button></div>
+      </div>
+    </details>
+    <div id="legend"></div>
+    <div class="toggles">
+      <label><input type="checkbox" id="showTrack" checked>Track</label>
+      <label><input type="checkbox" id="showActors" checked>Objects</label><label title="Draw objects with their game models (off: simple shapes)"><input type="checkbox" id="showModels" checked>Models</label>
+      <label><input type="checkbox" id="showRails" checked>Paths</label>
+      <label><input type="checkbox" id="showWidth" checked>Road width</label>
+      <label><input type="checkbox" id="showLinks" checked>Links</label>
+    </div>
+  </div>
+  <div id="right">
+    <div id="inspector"></div>
+    <div id="palwrap">
+      <div class="pane"><h4>Add object</h4><input id="pfilter" type="search" placeholder="Search…" style="flex:1;min-width:0"><button id="scan" title="Read every course once to list every object in the game">Scan all</button></div>
+      <div class="pane hint" id="pcount" style="padding:2px 10px"></div>
+      <div id="palette"></div>
+    </div>
+  </div>
+</div>
+<div id="status"><span id="stats"></span><span id="trackNote"></span><span class="sp"></span><span>WASD fly · Q/E down/up · Shift faster · Left-drag orbit · Right-drag pan · Wheel zoom · 1/2/3 move/rotate/scale</span></div>
+<div id="outdated" style="display:none"><b>This window is an older version of the editor.</b> A newer one is open in another window. Save your mod here first (Save as mod), then close this window and use the new one.<button onclick="location.reload()">Reload now (loses unsaved changes)</button></div>
+<div id="toasts"></div><div id="busy"></div>
+
+<dialog id="rawdlg">
+  <h3 id="rawtitle" style="margin-top:0">Edit as text</h3>
+  <textarea id="rawtext" spellcheck="false"></textarea>
+  <div class="row-end"><span id="rawerr" style="flex:1"></span><span class="hint">2.0 = float · 7 = int · 7u = u32 · 7ul = u64 · 7l = i64 · 1.5d = double</span><button id="rawcancel">Cancel</button><button id="rawapply" class="hot">Apply</button></div>
+</dialog>
+
+<dialog id="helpdlg">
+  <h3 style="margin-top:0">How to use it</h3>
+  <ol>
+    <li><b>Open RomFS…</b> and pick your dump's <code>romfs</code> folder. In Chrome or Edge it saves straight into the recomp. Other browsers (Firefox, Brave, Safari) ask for just the <code>Banc</code> folder and save the mod as a .zip instead.</li>
+    <li>Pick a course from the list. <code>Race_…</code> files are the race layouts; battle and connecting-road files are there too.</li>
+    <li>Click objects in the 3D view or the list on the left. Drag the arrows to move them, or type exact numbers on the right.</li>
+    <li><b>Add object</b>: click a name in the bottom-right list to drop it at the centre of the view. <b>Scan all</b> reads every course once so you can add any object the game uses (it's remembered afterwards).</li>
+    <li>Paths: the green line is the lap path (with checkpoints), blue lines are CPU/route paths, and the faint lines either side show the road width. Their points can be moved, duplicated and deleted like objects.</li>
+    <li><b>Save as mod</b> and pick the recomp's <code>mods</code> folder (<code>mkw-recomp\mods</code>). It writes <code>mods\&lt;name&gt;\romfs\…</code>, the manifest and mod.json, and updates the resource size table when a course grows. Then enable the mod in the recomp's Mods page. Edits to several courses in one session all go into the same mod.</li>
+    <li><b>Quick Create</b> lays out a whole course from one guide line. Click <i>Draw guide</i>, then click along the road in driving order from the start line (Enter when done), or use the course's existing lap path. It previews a lap path with checkpoints, CPU routes, rows of item boxes and an optional 24-kart start grid; <i>Create</i> adds them all in one step (Ctrl+Z undoes it).</li>
+    <li><b>Your own models</b>: in the Track Creator pick <i>Road from: My own model</i> and import an OBJ, FBX or DAE, plus (optionally) a simpler collision model. Use <i>Start grid .obj</i> to line it up: 1 unit = 1 metre, Y up, the race starts at the origin heading -Z. Pick its .mtl and texture images along with it and the textures go into the game too (hover a material's picture to enlarge it, click it to choose another image). Pick what kind of ground each material is. Then use <b>Quick Create</b> as usual (Draw guide along your road → Create): it lays out the lap path, CPU routes, item boxes and start grid on your model, and the start grid goes wherever your guide starts. The centre line still lays out the lap path, CPU route and items, so drag it along your road.</li>
+    <li><b>My track</b> (top bar): makes a brand-new track. Its editors are the tabs over the view, like Track Studio: <b>Track</b> (name, cup, music, pictures, Free Roam, Build), <b>Model</b>, <b>Collision</b>, <b>Paths</b> and <b>Map</b> (objects and every path). The Track Creator makes a brand-new track in its own slot (for now it's raced as Mushroom Cup race 1). Drag the yellow points, use <i>Add points</i> and click the ground to add more, set a point's height for hills, then <i>Build mod</i>. You need the whole RomFS folder open, because the track is built from your game files.</li>
+    <li><b>Track model</b>: when a course opens, its road model is loaded from your dump and drawn in grey/green/brown (textures aren't shown). With <b>Snap to ground</b> ticked, objects you drag, add or create with Quick Create sit on it; <kbd>End</kbd> or <i>Drop to track</i> puts the selection on it. Double-click the track to orbit around that spot.</li>
+    <li><b>Minimap…</b> draws the course's minimap from its lap paths (road width from each point), framed the way the game frames it, and puts it in the mod when you save. Tick <i>Re-frame</i> if your new layout spills off the edge.</li>
+    <li><b>Branching CPU routes</b>: click a route point and press <i>Draw branch from here</i>, click the new line, and finish near another route point to join back (Enter). Or select two points and press <i>Branch 1st → 2nd</i>, then drag the new points into place. <i>Link</i>/<i>Unlink</i> connect or disconnect two points; pink lines show links.</li>
+    <li><b>Collision of deleted objects</b>: some objects (signs, arrows, walls…) have their collision baked into the course's collision files. When you delete one, Save as mod switches that collision off in the course's <code>Race_…</code> / <code>RaceStage_…</code> collision files as well. Moving a baked object doesn't move its collision.</li>
+    <li>Opening a course that one of your mods already changed offers to open that edited version, so you can keep working on it.</li>
+    <li>For an emulator (Eden / Eglantine / PokeDinner) use <b>Download file</b> and put it in <code>&lt;mod&gt;\romfs\Banc\</code>.</li>
+  </ol>
+  <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> fly around · <kbd>Q</kbd>/<kbd>E</kbd> down/up · hold <kbd>Shift</kbd> to go faster</p><p><kbd>1</kbd> move · <kbd>2</kbd> rotate · <kbd>3</kbd> scale · <kbd>L</kbd> world/local · <kbd>F</kbd> focus · <kbd>Ctrl+D</kbd> duplicate · <kbd>Del</kbd> delete · <kbd>Ctrl+Z</kbd>/<kbd>Ctrl+Y</kbd> undo/redo · <kbd>Ctrl+S</kbd> save · <kbd>Esc</kbd> deselect</p>
+  <p class="hint">The road surface itself isn't drawn: in Mario Kart World the terrain lives in the shared world map, not the course file. The paths show where the road runs. Mod names can't contain spaces: the recomp cuts the name at the first space.</p>
+  <div class="row-end"><button id="helpclose">Close</button></div>
+</dialog>
+
+<dialog id="bancdlg">
+  <h3 style="margin-top:0">Open the Banc folder</h3>
+  <p>This browser can't open whole folders for editing (only Chrome and Edge can), and your romfs has over 200,000 files. So pick just the <b>Banc</b> folder inside it:</p>
+  <p class="mono">(your dump)\romfs\<b>Banc</b></p>
+  <p class="hint">If the browser asks whether to "upload" the files, say yes: nothing leaves your computer, the page only reads them. Saving gives you a mod .zip to extract into <span class="mono">mkw-recomp\mods</span>.</p>
+  <p class="hint">Optional: also load <span class="mono">romfs\System\Resource\ResourceSizeTable.Product.100.Nin_Ounce_NVN2.rsizetable.zs</span>. It's only needed if your edits make a course file bigger, and you'll be asked for it then.</p>
+  <div class="row-end"><button id="bancrstb">Load size table…</button><button onclick="this.closest('dialog').close()">Cancel</button><button id="bancpick" class="hot">Pick the Banc folder…</button></div>
+</dialog>
+<dialog id="rstbdlg">
+  <h3 style="margin-top:0">One more file needed</h3>
+  <p>Your changes made a course file bigger than the original, so the game's size table has to be updated too or the course may crash on load. Please pick:</p>
+  <p class="mono">romfs\System\Resource\ResourceSizeTable.Product.100.Nin_Ounce_NVN2.rsizetable.zs</p>
+  <div class="row-end"><button id="rstbskip">Save without it</button><button id="rstbpick" class="hot">Pick the size table…</button></div>
+</dialog>
+<input id="bancInput" type="file" webkitdirectory directory multiple hidden>
+<input id="rstbInput" type="file" accept=".zs" hidden>
+
+<dialog id="mmdlg" style="width:min(760px,94vw)">
+  <h3 style="margin-top:0">Minimap <span class="hint" id="mm_name"></span></h3>
+  <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+    <div style="flex:1;min-width:300px;background:repeating-conic-gradient(#2a303c 0 25%,#232833 0 50%) 0 0/16px 16px;border-radius:8px;padding:8px;display:flex;justify-content:center"><canvas id="mm_preview" style="max-width:100%;image-rendering:auto"></canvas></div>
+    <div style="width:220px;display:flex;flex-direction:column;gap:8px;font-size:12px">
+      <div id="mm_srcrow" style="display:none;flex-direction:column;gap:6px">
+        <label>Draw from <select id="mm_src" style="width:100%"><option value="path">The lap path</option><option value="track">The track model (top-down)</option><option value="file">An imported model</option></select></label>
+        <div id="mm_filerow" class="hint"><button id="mm_pick" class="hot">Import a model…</button> <span id="mm_file"></span><br>Use the same placement as your track model (export it from the same scene). Pick its texture images with it.</div>
+        <label class="qck" id="mm_texrow"><input type="checkbox" id="mm_tex" checked>Use the model's textures (off: one colour)</label>
+        <label class="qck" id="mm_pathrow"><input type="checkbox" id="mm_pathtoo">Lap path on top</label>
+      </div>
+      <input type="file" id="mm_filein" multiple accept=".obj,.fbx,.dae,.mtl,.png,.jpg,.jpeg,.tga,.bmp,.webp" style="display:none">
+      <label class="qck">Road colour <input type="color" id="mm_color" value="#e6e6e6" style="padding:0;width:40px;height:24px"></label>
+      <label class="qck"><input type="checkbox" id="mm_doOutline" checked>Outline <input type="color" id="mm_outline" value="#2a2a2a" style="padding:0;width:40px;height:24px"></label>
+      <label>Road width <input type="range" id="mm_width" min="40" max="250" value="100" style="width:100%"></label>
+      <label>Opacity <input type="range" id="mm_opacity" min="30" max="100" value="80" style="width:100%"></label>
+      <label class="qck"><input type="checkbox" id="mm_routes">Also draw CPU routes (branches)</label>
+      <label class="qck"><input type="checkbox" id="mm_fit">Re-frame to fit the new layout</label>
+      <div class="hint">Re-framing also saves new minimap camera settings into the game's settings archive, so the player icons line up.</div>
+      <div id="mm_warn" style="color:#ff8a4a"></div>
+    </div>
+  </div>
+  <div class="row-end" style="margin-top:10px"><button id="mm_png">Download PNG</button><button id="mm_close">Cancel</button><button id="mm_add" class="hot">Add to mod</button></div>
+</dialog>
+<dialog id="frdlg" style="width:min(1060px,96vw)">
+  <h3 style="margin-top:0">Free Roam placement <span class="hint">click or drag the map to move your track · mouse wheel zooms · right-drag pans</span></h3>
+  <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+    <div style="flex:1;min-width:320px;border-radius:8px;overflow:hidden;background:#0d1a2b"><canvas id="fr_map" width="760" height="760" style="width:100%;display:block;cursor:crosshair"></canvas></div>
+    <div style="width:230px;display:flex;flex-direction:column;gap:8px;font-size:12px">
+      <label>Turn <span id="fr_yawv"></span><input type="range" id="fr_yaw" min="0" max="359" value="0" style="width:100%"></label>
+      <label class="qck"><input type="checkbox" id="fr_auto" checked>Sit on the ground (or the sea)</label>
+      <label class="qck" title="Normally your track sits on the sea's surface where the ground is under water. Tick this to put it down on the seabed instead."><input type="checkbox" id="fr_seabed">On the seabed (under the sea)</label>
+      <label class="qck" title="Takes the open world's own things out of your track's area: the points where it spawns sea creatures like jellyfish (and birds, bubbles and so on), and its props. Its ground, areas and warps stay."><input type="checkbox" id="fr_clear" checked>Clear the world's creatures and props from the track's area</label>
+      <label>Raise / lower (m) <input type="number" id="fr_raise" value="0" step="0.5" style="width:80px"></label>
+      <label>Height (when not on the ground) <input type="number" id="fr_y" value="220" step="1" style="width:80px"></label>
+      <div class="hint" id="fr_read"></div>
+      <label class="qck"><input type="checkbox" id="fr_grid" checked>Grid (1 km squares)</label>
+      <label class="qck"><input type="checkbox" id="fr_names" checked>Course names</label>
+      <div class="hint">Your track's 0 height (the start line for a road built from the centre line) goes at the height shown. The sea is at about 220. The map is drawn from the game's own height map, so check the spot in game: things on the map that aren't ground (bridges, buildings) aren't shown.</div>
+    </div>
+  </div>
+  <div class="row-end" style="margin-top:10px"><button id="fr_close" class="hot">Done</button></div>
+</dialog>
+<dialog id="trdlg" style="width:min(1060px,96vw)">
+  <h3 style="margin-top:0">World terrain area <span class="hint">drag on the map to choose the area · mouse wheel zooms · right-drag pans</span></h3>
+  <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+    <div style="flex:1;min-width:320px;border-radius:8px;overflow:hidden;background:#0d1a2b"><canvas id="tr_map" width="760" height="760" style="width:100%;display:block;cursor:crosshair"></canvas></div>
+    <div style="width:230px;display:flex;flex-direction:column;gap:8px;font-size:12px">
+      <label>Detail <select id="tr_detail" style="width:100%"><option value="0">Exact (the game's own ground)</option><option value="2">Very high (4 m)</option><option value="4">High (8 m)</option><option value="8">Medium (16 m)</option><option value="16">Low (31 m)</option></select></label>
+      <div class="hint" id="tr_read"></div>
+      <div class="hint" id="tr_warn" style="color:#f5c542"></div>
+      <label class="qck"><input type="checkbox" id="tr_names" checked>Course names</label>
+      <div class="hint">The squares are the game's 250 m ground tiles; green ones are loaded. The white dot is your track (when it's placed in Free Roam). Only the tiles in the yellow box are read when you press Load; the rest are left out. Gaps you may see on the sea floor are real: the game has no ground there.</div>
+    </div>
+  </div>
+  <div class="row-end" style="margin-top:10px"><button id="tr_clear">Clear</button><button id="tr_load" class="hot">Load</button><button id="tr_close">Done</button></div>
+</dialog>
+<script>/*APP*/</script>
+</body>
+</html>

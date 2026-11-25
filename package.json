@@ -1,0 +1,19 @@
+{
+  "name": "mkworld-course-editor",
+  "version": "1.0.0",
+  "description": "Course editor and track creator for Mario Kart World (mkw-recomp)",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "esbuild": "^0.28.2",
+    "fzstd": "^0.1.1",
+    "three": "^0.170.0",
+    "three-mesh-bvh": "^0.8.3"
+  },
+  "private": true
+}
