@@ -563,7 +563,8 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
     r.BancFile = r.BancFile.replace(CA, C); r.FromStageIdValue = T.u32(hSZ);
     delete r.LapNum; delete r.ForceUseTime; delete r.DefaultTimeAttackTime; r.DefaultRaceTime = 3;
     if (spec.hour !== undefined && spec.hour !== null) { r.ForceUseTime = true; r.DefaultRaceTime = spec.hour; r.DefaultTimeAttackTime = spec.hour; }   // a fixed time of day, like Rainbow Road's night
-    if (spec.laps && spec.laps !== 3) r.LapNum = T.i32(spec.laps);
+    if (spec.raceType === 'loop' || spec.raceType === 'ab') r.LapNum = T.i32(0);   // a section race, like Rainbow Road and the one-way courses: the lap path's lap checks count the sections
+    else if (spec.laps && spec.laps !== 3) r.LapNum = T.i32(spec.laps);
     // (IsForbidEnvirionmentalEffect, from Rainbow Road, stays on: without it the weather effects drew diagonal streaks over imported tracks' walls)
     if (worldScene) { delete r.WorldTransformParentActor; r.WorldTransformParentFile = worldScene; r.AudienceType = 'NoFile'; } }));
   // where the world starts loading in: the start line (Rainbow Road's is up in the sky)

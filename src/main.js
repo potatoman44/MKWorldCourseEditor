@@ -9,10 +9,10 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.4';
+const EDITOR_VER = 'v1.5';
 import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas } from './newslot.js';
 import { parseSarc as parseSarcM } from './sarc.js';
-import { generate, toWorld, DEFAULTS as TC_DEFAULTS, DEFAULT_POINTS, LOCK_AFTER, LOCK_BEFORE, SURF } from './trackgen.js';
+import { generate, toWorld, applySections, DEFAULTS as TC_DEFAULTS, DEFAULT_POINTS, LOCK_AFTER, LOCK_BEFORE, SURF } from './trackgen.js';
 import { modelCapacity } from './bfmodel.js';
 import { parseModel, makeXform, measureTilt, boundsOf, previewMesh, packParts, startGridObj, guessSlot, guessSurface, SLOTS, SLOT_COLOR, GRID_X, isImage, imageFileToCanvas, canvasRGBA, thumb } from './modelimport.js';
 import { BRUSHES } from './surfaces.js';
@@ -1986,7 +1986,7 @@ const TC_COL = { asphalt: 0x6b7280, floorparts: 0x5f9e4a, frame: 0xd08a52, floor
 const tcMat = new Map();
 const tcMatFor = (k, c) => { if (!tcMat.has(k)) tcMat.set(k, new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: k === 'floortile' ? 2 : 0, polygonOffsetUnits: k === 'floortile' ? 2 : 0 })); return tcMat.get(k); };
 const TC_KEY = 'mkwe-trackcreator-1';
-const tcFields = { width: 'tc_width', shoulder: 'tc_shoulder', wallHeight: 'tc_wall', segLen: 'tc_seg', itemFirst: 'tc_ifirst', itemEvery: 'tc_ievery', itemPer: 'tc_iper', laps: 'tc_laps' };
+const tcFields = { width: 'tc_width', shoulder: 'tc_shoulder', wallHeight: 'tc_wall', segLen: 'tc_seg', itemFirst: 'tc_ifirst', itemEvery: 'tc_ievery', itemPer: 'tc_iper', laps: 'tc_laps', sections: 'tc_sections' };
 
 function tcOpts() {
   const o = { ...TC_DEFAULTS };
@@ -1994,14 +1994,16 @@ function tcOpts() {
   o.width = Math.max(6, o.width); o.segLen = Math.min(20, Math.max(2, o.segLen)); o.shoulder = Math.max(0, o.shoulder); o.wallHeight = Math.max(0, o.wallHeight);
   o.itemPer = Math.max(0, Math.min(8, Math.round(o.itemPer))); o.laps = Math.max(1, Math.min(9, Math.round(o.laps)));
   o.ground = $('#tc_ground').checked; o.coins = $('#tc_coins').checked;
+  o.race = $('#tc_race').value || 'laps'; o.sections = Math.max(2, Math.min(8, Math.round(o.sections || 3))); o.open = o.race === 'ab' && !tcImporting();
   o.groundPoly = TC.groundPoly && TC.groundPoly.length >= 3 ? TC.groundPoly.map(q => [q[0], q[1]]) : null; o.rails = 'none'; o.beachOn = $('#tc_beach').checked; o.beachW = parseFloat($('#tc_beachw').value) || 30;
   o.tex = JSON.parse(JSON.stringify(TC.surf));
   return o;
 }
-function tcDesign() { return { v: 1, boosts: TC.boosts || [], rails: TC.railsImp || [], glideMade: TC.glideMade || [], hour: $('#tc_time').value, mm: TC.mm || null, music: $('#tc_music').value || TC.musicWant || '', musicHost: $('#tc_host').value || TC.hostWant || '', qc: TC.qc || null, name: $('#tc_name').value, mod: $('#tc_mod').value, cup: $('#tc_cup').value, vs: $('#tc_vs').value, picsvs: $('#tc_picsvs').checked, small: !$('#tc_big').checked, presets: TC.presets, nflip: $('#tc_nflip').checked, sharp: $('#tc_sharp').checked, bright: tcBright(), fr: TC.fr || null, points: TC.pts, opts: tcOpts(), src: $('#tc_src').value, place: tcPlace(), map: TC.map, files: { vis: TC.vis?.name || null, col: TC.col?.name || null } }; }
+function tcDesign() { return { v: 1, race: $('#tc_race').value, boosts: TC.boosts || [], rails: TC.railsImp || [], glideMade: TC.glideMade || [], hour: $('#tc_time').value, mm: TC.mm || null, music: $('#tc_music').value || TC.musicWant || '', musicHost: $('#tc_host').value || TC.hostWant || '', qc: TC.qc || null, name: $('#tc_name').value, mod: $('#tc_mod').value, cup: $('#tc_cup').value, vs: $('#tc_vs').value, picsvs: $('#tc_picsvs').checked, small: !$('#tc_big').checked, presets: TC.presets, nflip: $('#tc_nflip').checked, sharp: $('#tc_sharp').checked, bright: tcBright(), fr: TC.fr || null, points: TC.pts, opts: tcOpts(), src: $('#tc_src').value, place: tcPlace(), map: TC.map, files: { vis: TC.vis?.name || null, col: TC.col?.name || null } }; }
 function tcApplyDesign(d) {
   TC.pts = (d.points || DEFAULT_POINTS).map(p => p[3] && typeof p[3] === 'object' ? [+p[0], +p[1], +p[2], { ...p[3] }] : [+p[0], +p[1], +p[2]]); TC.multi = new Set();
   if (d.name) $('#tc_name').value = d.name; if (d.mod) $('#tc_mod').value = d.mod; if (d.cup !== undefined) $('#tc_cup').value = d.cup; $('#tc_vs').value = d.vs !== undefined ? d.vs : 'Rainbow_00'; $('#tc_picsvs').checked = !!d.picsvs; $('#tc_big').checked = !d.small; TC.presets = Array.isArray(d.presets) ? d.presets.map(p => ({ ...p })) : []; setTimeout(tcEnsurePresets, 0); $('#tc_nflip').checked = !!d.nflip; $('#tc_sharp').checked = !!d.sharp; $('#tc_bright').value = d.bright ? Math.round(d.bright * 100) : 100; TC.fr = d.fr ? { ...frDefault(), ...d.fr } : null; $('#tc_fr').checked = !!TC.fr?.on; frInfo(); TC.musicWant = d.music || ''; TC.hostWant = d.musicHost || ''; tcMusicFill(); TC.mm = d.mm || null; $('#tc_time').value = d.hour || '';
+  $('#tc_race').value = ['laps', 'loop', 'ab'].includes(d.race) ? d.race : 'laps'; tcRaceUI();
   const o = { ...TC_DEFAULTS, ...(d.opts || {}) };
   for (const [k, id] of Object.entries(tcFields)) $('#' + id).value = o[k];
   $('#tc_ground').checked = !!o.ground; $('#tc_coins').checked = !!o.coins;
@@ -2195,7 +2197,7 @@ function tcUpdate(soon) {
   if (gen) for (const n of g.lap) {
     const r = n.rs[0] / 2, s = Math.sin(n.yaw), c = Math.cos(n.yaw);
     const a = new THREE.Vector3(n.pos[0] - c * r, n.pos[1] + 0.4, n.pos[2] + s * r), b = new THREE.Vector3(n.pos[0] + c * r, n.pos[1] + 0.4, n.pos[2] - s * r);
-    const col = n.dyn?.IsStart ? 0xffffff : n.dyn?.CheckPoint ? 0x3ddc84 : 0x2a7a4a;
+    const col = n.dyn?.IsStart ? 0xffffff : n.dyn?.IsGoal ? 0xff4a4a : n.dyn?.IsLapCheck ? 0xffa53d : n.dyn?.CheckPoint ? 0x3ddc84 : 0x2a7a4a;
     TC.preview.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: col })));
   }
   if (gen) for (const a of g.actors) {
@@ -2374,6 +2376,7 @@ async function tcWorldSpec(withParts) {
   TC.cap = tcCapOf(zsDecompress(raw));
   const g = generate(TC.pts, tcGenOpts(), TC.cap);
   if (tcImporting()) {
+    if ($('#tc_race').value === 'ab' && TC.qc?.closed) throw new Error('an A to B race needs a lap path that doesn\'t loop: in Quick Create untick "Loop", draw the guide from the start to the finish and click Create');
     if (!TC.vis) throw new Error('import your model first');
     if (withParts) { busy('Packing your model into parts…'); await new Promise(r => setTimeout(r, 30)); TC.pack = tcPack(); g.parts = TC.pack.parts; } else g.parts = [];
     if (!TC.qc || !TC.qc.lap.length) throw new Error('lay out the paths first: open Quick Create, draw the guide along your road and click Create');
@@ -2388,7 +2391,7 @@ async function tcWorldSpec(withParts) {
   if (TC.glideMade.length > 300) TC.glideMade = TC.glideMade.slice(-300);
   const toW = n => ({ ...n, pos: n.pos.map((v, i) => Math.fround(SLOT_START[i] + v)), yaw: Math.fround(n.yaw) });
   const railPaths = (tcImporting() ? TC.railsImp.map(tcRailNodes) : g.railPaths || []).filter(r => r.length >= 2).map(r => r.map(toW));
-  return { g, w, rd, spec: { glidePaths: glides, glideMade: TC.glideMade, railPaths, laps: g.opts.laps, parts: w.parts, lap: w.lap, route: w.route, routes: w.routes, lapRails: w.lapRails, routeRails: w.routeRails, starts: w.starts, actors: w.actors, extent: w.extent, startHeight: tcImporting() && !(w.starts && w.starts.length) ? (x, z) => tcHeightW(x, 0, z) : null } };
+  return { g, w, rd, spec: { glidePaths: glides, glideMade: TC.glideMade, railPaths, laps: g.opts.laps, raceType: g.opts.race, parts: w.parts, lap: w.lap, route: w.route, routes: w.routes, lapRails: w.lapRails, routeRails: w.routeRails, starts: w.starts, actors: w.actors, extent: w.extent, startHeight: tcImporting() && !(w.starts && w.starts.length) ? (x, z) => tcHeightW(x, 0, z) : null } };
 }
 async function tcBuild(asZip) {
   if (!S.romfs || S.romfs.fake) return toast('Open the RomFS folder first (Open RomFS… → your dump\'s romfs folder): the track is built from your game files.', 'err');
@@ -2463,6 +2466,15 @@ $('#tc_vs').append(el('option', { value: '' }, 'No stand-in (in the open world: 
 $('#tc_vs').value = 'Rainbow_00';
 for (const id of ['tc_name', 'tc_mod', 'tc_cup', 'tc_vs', 'tc_picsvs']) $('#' + id).addEventListener('change', tcSave);
 $('#tc_nflip').addEventListener('change', tcSave);
+// the race: laps, or sections (looping, or one way from A to B)
+function tcRaceUI() {
+  const r = $('#tc_race').value, sec = r !== 'laps';
+  $('#tc_lapsrow').style.display = sec ? 'none' : ''; $('#tc_secrow').style.display = sec ? '' : 'none';
+  $('#tc_racehint').textContent = r === 'loop' ? 'One run round the whole track, split into sections (orange marks on the lap path); the finish (red) is just before the start.'
+    : r === 'ab' ? (tcImporting() ? 'One way from the start to the finish (red), split into sections (orange). In Quick Create untick "Loop" and draw the guide from the start to the finish.' : 'One way: the road starts at the start line and ends at your last point (the finish, red), split into sections (orange marks).') : '';
+}
+$('#tc_race').addEventListener('change', () => { tcRaceUI(); tcUpdate(true); tcSave(); });
+$('#tc_sections').addEventListener('input', () => { tcUpdate(true); tcSave(); });
 $('#tc_sharp').addEventListener('change', () => { TC.impKey = ''; tcUpdate(); tcSave(); });
 $('#tc_bright').addEventListener('change', () => { TC.impKey = ''; tcUpdate(); tcSave(); });
 // your textures' brightness (1 = as they are): multiplies their colour when the mod is built
@@ -2476,7 +2488,7 @@ $('#tc_zip').onclick = () => tcBuild(true);
 // The course is kept (TC.docBytes); building uses it plus the model's parts. Changing paths in the Track Creator after
 // finishing replaces the course's paths, item boxes and start grid on the next Finish (other objects stay).
 const CUSTOM_PATH = `Banc/${NEWSLOT.CZ}[Game03].bcett.byml.zs`;
-const tcPathKey = () => JSON.stringify([tcImporting() ? TC.qc : null, tcImporting() ? null : TC.pts, tcImporting() ? null : tcGenOpts()]);
+const tcPathKey = () => JSON.stringify([$('#tc_race').value, $('#tc_sections').value, tcImporting() ? TC.qc : null, tcImporting() ? null : TC.pts, tcImporting() ? null : tcGenOpts()]);
 function tcFlushDoc() { if (!S.customTrack || !S.doc || TC.noFlush) return; try { syncCounts(); const b = writeByml(S.doc);
   if (TC.route && TC.route !== 'A') { const v = TC.variants.find(x => x.letter === TC.route); if (v) { v.bytes = b; tcSaveVariants(); } return; }
   TC.docBytes = b; idb.set('tc-doc', { bytes: TC.docBytes, key: TC.docKey }); } catch (e) { console.error(e); } }
@@ -3634,6 +3646,7 @@ const tcBranches = q => (q.branches || []).map(b => ({ b, a: nearestIdx(q.lap, b
 function tcQCSpec(q) {
   let cp = 0;
   const lap = q.lap.map(f => ({ pos: f.pos, yaw: f.yaw, rs: [nodeW(q, f), 20], ro: [0, 10], dyn: f.start ? { IsStart: true } : f.cp ? { CheckPoint: ++cp } : null }));
+  { const o = tcOpts(); applySections(lap, o.race, o.sections, q.closed); }
   const brs = tcBranches(q);
   // each alternate route carries the same checkpoint numbers as the stretch of lap path it replaces
   const lapAlts = brs.map(({ b, a, z }) => {

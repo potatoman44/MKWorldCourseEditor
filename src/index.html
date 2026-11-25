@@ -108,7 +108,7 @@ dialog::backdrop { background:#000a; }
 </head>
 <body>
 <div id="top">
-  <div class="brand" title="Version 1.4: centre-line points can have cliffs, hills or a bridge below them, or be a gap (glide, trampoline mushrooms, or just a gap)">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.4</span></div>
+  <div class="brand" title="Version 1.5: section races, looping (like Rainbow Road) or A to B (like DK Spaceport)">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.5</span></div>
   <div class="menu" id="filemenu"><button id="filebtn" title="Open your dump, open a course file, save your edits as a mod">File ▾</button>
     <div class="menupop">
       <button id="openRomfs" title="The game's romfs folder from your dump">Open RomFS…</button><button id="openBase" title="Optional: the base game's romfs (version 1.0). An update's romfs only has the files that changed, so objects whose models never changed (most open-world scenery, like the Toad houses) need the base game's files to show their models.">Base game…</button>
@@ -151,7 +151,10 @@ dialog::backdrop { background:#000a; }
       <div class="tgrid"><span>Mod name</span><input id="tc_mod" type="text" value="CustomTrack" title="Folder name in mkw-recomp\mods"></div>
       <div class="tgrid"><span>Test it in</span><select id="tc_cup"><option value="Kinoko">Mushroom Cup, race 1</option><option value="Flower">Flower Cup, race 1</option><option value="Star">Star Cup, race 1</option><option value="Special">Special Cup, race 1</option><option value="">No cup</option></select></div>
       <div class="tgrid"><span>VS &amp; Time Trials</span><select id="tc_vs" title="In VS and Time Trials, picking this course on the map starts your track instead. Grand Prix still has the real course."></select></div>
-      <div class="tgrid"><span>Laps</span><input id="tc_laps" type="number" value="3" min="1" max="9" style="width:70px"></div>
+      <div class="tgrid"><span>Race</span><select id="tc_race" title="Laps: round and round a circuit. Sections: one long run split into sections the game counts (1/3, 2/3, 3/3), either a loop back to the start like Rainbow Road, or one way from A to B like DK Spaceport."><option value="laps">Laps (a circuit)</option><option value="loop">Sections, looping (like Rainbow Road)</option><option value="ab">Sections, A to B (like DK Spaceport)</option></select></div>
+      <div class="tgrid" id="tc_lapsrow"><span>Laps</span><input id="tc_laps" type="number" value="3" min="1" max="9" style="width:70px"></div>
+      <div class="tgrid" id="tc_secrow" style="display:none"><span>Sections</span><input id="tc_sections" type="number" value="3" min="2" max="8" style="width:70px"></div>
+      <div class="hint" id="tc_racehint"></div>
       <div class="qbtns"><button id="tc_check" title="Test-builds a track in memory (saves nothing) and tells you whether your dump has everything the Track Creator needs, with the game version. The result is copied so you can share it.">Check my dump</button><button id="tc_grid" title="A model of the start grid (1 unit = 1 m, Y up, race heads -Z) to line your road up with in Blender etc.">Start grid .obj</button></div>
       <div class="tgrid"><span>Music</span><select id="tc_music"><option value="">Default (as before)</option></select></div>
       <div class="tgrid" id="tc_hostrow" style="display:none"><span>In place of</span><select id="tc_host" title="Which stage's race music the song takes over"></select></div>

@@ -10,6 +10,7 @@ export const DEFAULTS = {
   beach: 0, beachMat: 'backside01',    // beach: metres of sand round the ground square, sloping down from its edge to beachY (or 8 m down)
   beachY: null,
   rails: 'none', railMat: 'backside00', railR: 0.25,   // grind rails on the wall tops: 'left' | 'right' | 'both' (the way you drive)
+  race: 'laps', sections: 3, open: false,   // a section race (applySections) and one-way (A to B) roads
   cliffMat: 'watersedge', mushroomMat: 'floorlight', hillSlope: 1.5,   // a point's sides (cliffs / hills / bridge) and trampoline gaps
 };
 const RAIL_SIDES = 8;
@@ -21,6 +22,24 @@ export const DEFAULT_POINTS = [[-6, 0, -62], [-40, 0, -88], [-82, 0, -62], [-92,
 export const SURF = { road: [4, 4, 0], wall: [10, 5, 0], grass: [6, 8, 0], sand: [6, 10, 0], railTop: [4, 13, 0], railSide: [10, 13, 0], fall: [28, 0, 0], trampoline: [19, 0, 0] };   // a rail's collision: a box with a metal road top and metal wall sides, like the game's (Mario Bros. Circuit's stand-top rails)
 
 export const controlLoop = pts => [...LOCK_AFTER, ...pts, ...LOCK_BEFORE];
+// a one-way track (A to B): the straight into the start grid, the start line, then your points to the end
+export const controlOpen = pts => [...LOCK_BEFORE, ...LOCK_AFTER, ...pts];
+
+// section races (like Rainbow Road, or the one-way courses like DK Spaceport): the lap path's start, a lap check where each
+// section begins (the game counts them: 1/3, 2/3, 3/3) and the goal (looping: its last point, just before the start).
+// mode: 'laps' (leave it) | 'loop' | 'ab'. lap: the main lap path's nodes in driving order, each with .dyn
+export function applySections(lap, mode, n, closed) {
+  if ((mode !== 'loop' && mode !== 'ab') || lap.length < 4) return lap;
+  n = Math.max(2, Math.min(8, Math.round(n) || 3));
+  const M = lap.length, goal = M - 1, span = closed ? M : M - 1;
+  lap[0].dyn = { IsStart: true }; lap[goal].dyn = { IsGoal: true };
+  for (let j = 0; j < n; j++) {
+    let k = Math.min(goal - 1, Math.max(1, j === 0 ? 1 : Math.round(j * span / n)));
+    while (k < goal - 1 && lap[k].dyn && (lap[k].dyn.IsLapCheck || lap[k].dyn.CheckPoint !== undefined)) k++;
+    lap[k].dyn = { IsLapCheck: true };
+  }
+  return lap;
+}
 
 // ---- the ground's own shape: a polygon [[x, z], ...] (any order, may bend inwards)
 const area2 = P => { let a = 0; for (let i = 0; i < P.length; i++) { const p = P[i], q = P[(i + 1) % P.length]; a += p[0] * q[1] - q[0] * p[1]; } return a / 2; };
@@ -58,11 +77,12 @@ export function offsetPoly(P, d) {
 }
 
 // centripetal Catmull-Rom through a closed list of points -> dense polyline
-function catmull(P, perSeg = 24) {
+function catmull(P, perSeg = 24, open = false) {
   const n = P.length, out = [];
   const d = (a, b) => Math.max(1e-4, Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) ** 0.5);
-  for (let i = 0; i < n; i++) {
-    const p0 = P[(i - 1 + n) % n], p1 = P[i], p2 = P[(i + 1) % n], p3 = P[(i + 2) % n];
+  const ext = (a, b) => a.map((x, j) => 2 * x - b[j]);   // past an open end: the line carried on
+  for (let i = 0; i < (open ? n - 1 : n); i++) {
+    const p0 = open ? (i > 0 ? P[i - 1] : ext(P[0], P[1])) : P[(i - 1 + n) % n], p1 = P[i], p2 = P[(i + 1) % n], p3 = open ? (i + 2 < n ? P[i + 2] : ext(P[n - 1], P[n - 2])) : P[(i + 2) % n];
     const t0 = 0, t1 = t0 + d(p0, p1), t2 = t1 + d(p1, p2), t3 = t2 + d(p2, p3);
     for (let k = 0; k < perSeg; k++) {
       const t = t1 + (t2 - t1) * k / perSeg;
@@ -72,22 +92,25 @@ function catmull(P, perSeg = 24) {
       out.push(L(B1, B2, t1, t2));
     }
   }
+  if (open) out.push(P[n - 1].slice());
   return out;
 }
 
 // evenly spaced samples along the closed centre line: [{p, t (unit tangent, 3D), l (left, horizontal), s}]
-export function sampleCentre(points, segLen) {
-  const dense = catmull(controlLoop(points));
+// open: a one-way track (s is still 0 at the start line: the straight into the grid has s below 0)
+export function sampleCentre(points, segLen, open = false) {
+  const dense = catmull(open ? controlOpen(points) : controlLoop(points), 24, open);
   const cum = [0];
-  for (let i = 1; i <= dense.length; i++) { const a = dense[i - 1], b = dense[i % dense.length]; cum.push(cum[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2])); }
-  const L = cum[cum.length - 1], N = Math.max(12, Math.round(L / segLen));
-  const at = s => { s = ((s % L) + L) % L; let lo = 0, hi = cum.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= s) lo = m; else hi = m; }
+  for (let i = 1; i < (open ? dense.length : dense.length + 1); i++) { const a = dense[i - 1], b = dense[i % dense.length]; cum.push(cum[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2])); }
+  const L = cum[cum.length - 1], N = Math.max(12, Math.round(L / segLen)), s0 = open ? cum[2 * 24] : 0;   // open: where the start line is along it
+  const wrap = s => open ? Math.min(L, Math.max(0, s + s0)) : ((s % L) + L) % L;
+  const at = s => { s = wrap(s); let lo = 0, hi = cum.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= s) lo = m; else hi = m; }
     const a = dense[lo], b = dense[(lo + 1) % dense.length], f = (s - cum[lo]) / ((cum[lo + 1] - cum[lo]) || 1); return a.map((x, j) => x + (b[j] - x) * f); };
-  const segAt = s => { s = ((s % L) + L) % L; let lo = 0, hi = cum.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= s) lo = m; else hi = m; } return Math.floor(lo / 24); };
+  const segAt = s => { s = wrap(s); let lo = 0, hi = cum.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= s) lo = m; else hi = m; } return Math.floor(lo / 24); };
   const frame = s => { const p = at(s), a = at(s - 0.5), b = at(s + 0.5); let t = b.map((x, j) => x - a[j]); const tl = Math.hypot(...t); t = t.map(x => x / tl);
     let l = [t[2], 0, -t[0]]; const ll = Math.hypot(l[0], l[2]) || 1; l = l.map(x => x / ll); return { p, t, l, s, seg: segAt(s) }; };   // seg: which stretch of controlLoop (from its point seg to the next)
-  const rings = []; for (let i = 0; i <= N; i++) rings.push(frame(L * i / N));
-  return { L, N, rings, frame };
+  const rings = []; for (let i = 0; i <= N; i++) rings.push(frame(L * i / N - s0));
+  return { L, N, rings, frame, open, s0, sEnd: L - s0, firstUser: open ? LOCK_BEFORE.length + LOCK_AFTER.length : LOCK_AFTER.length };
 }
 
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -104,12 +127,12 @@ export const SIDE_STYLES = ['cliff', 'hill', 'bridge'], GAP_STYLES = ['glide', '
 export function generate(points, o, cap) {
   o = { ...DEFAULTS, ...o };
   const styles = points.map(p => p[3] || null); points = points.map(p => [p[0], p[1], p[2]]);
-  const C = sampleCentre(points, o.segLen), { rings, N, L } = C, hw = o.width / 2, sw = hw + o.shoulder;
+  const C = sampleCentre(points, o.segLen, !!o.open), { rings, N, L } = C, hw = o.width / 2, sw = hw + o.shoulder, sEnd = C.sEnd;
   const warn = [];
   if (o.width < 18 && !o.noRoad) warn.push('The start grid is about 16 m wide: make the road at least 18 m wide or karts start off the road.');
   // segments per part, from what each material can hold
   // each ring's walls: its stretch's point's own setting, else the track's
-  const styleOfSeg = c => (c >= LOCK_AFTER.length && c < LOCK_AFTER.length + styles.length ? styles[c - LOCK_AFTER.length] : null) || {};
+  const styleOfSeg = c => (c >= C.firstUser && c < C.firstUser + styles.length ? styles[c - C.firstUser] : null) || {};
   const ringStyle = rings.map(r => { const st = styleOfSeg(r.seg), w = st.w && st.w in WALL_STYLES ? st.w : null;
     const h = w ? WALL_STYLES[w] : o.wallHeight, tunnel = w ? w === 'tunnel' : !!o.tunnel, rails = h > 0 && !tunnel ? ({ left: [1], right: [-1], both: [1, -1] }[st.r] || []) : [];   // rails only where a point asks for them
     return { h, tunnel: tunnel && h > 0, rails, sd: SIDE_STYLES.includes(st.sd) ? st.sd : null, gap: GAP_STYLES.includes(st.gap) ? st.gap : null }; });
@@ -303,17 +326,17 @@ export function generate(points, o, cap) {
   const yaw = r => Math.atan2(r.t[0], r.t[2]);
   const nL = Math.max(8, Math.round(L / 25)), lap = [];
   const gapAt = r => !!styleOfSeg(r.seg).gap;
-  for (let i = 0; i < nL; i++) { const r = C.frame(L * i / nL), g = gapAt(r);   // over a gap the box reaches well below and above the road (you drop, bounce or glide there)
+  for (let i = 0; i < nL; i++) { const r = C.frame(C.open ? sEnd * i / (nL - 1) : L * i / nL), g = gapAt(r);   // over a gap the box reaches well below and above the road (you drop, bounce or glide there)
     lap.push({ pos: H(r.p), yaw: yaw(r), rs: [2 * sw + 4, g ? 90 : 20], ro: [0, g ? 20 : 10], dyn: i === 0 ? { IsStart: true } : (i % 3 === 2 ? { CheckPoint: Math.floor((i + 1) / 3) } : null) }); }
   const last = lap.reduce((m, n) => n.dyn && n.dyn.CheckPoint ? n.dyn.CheckPoint : m, 0);
   const nR = Math.max(16, Math.round(L / 12)), route = [];
-  for (let i = 0; i < nR; i++) { const r = C.frame(L * i / nR); route.push({ pos: H(r.p), yaw: yaw(r), rs: [Math.max(4, Math.round(o.width * 0.4)), 10], ro: [0, 5] }); }   // narrower than the lap path, like the game's own routes
+  for (let i = 0; i < nR; i++) { const r = C.frame(C.open ? sEnd * i / (nR - 1) : L * i / nR); route.push({ pos: H(r.p), yaw: yaw(r), rs: [Math.max(4, Math.round(o.width * 0.4)), 10], ro: [0, 5] }); }   // narrower than the lap path, like the game's own routes
   const actors = [];
-  if (o.itemPer > 0 && o.itemEvery > 0) for (let s = o.itemFirst; s < L - 60; s += o.itemEvery) {
+  if (o.itemPer > 0 && o.itemEvery > 0) for (let s = o.itemFirst; s < sEnd - 60; s += o.itemEvery) {
     const r = C.frame(s), gap = Math.min(4.5, o.width / o.itemPer); if (gapAt(r)) continue;
     for (let k = 0; k < o.itemPer; k++) { const q = H(off(r, (k - (o.itemPer - 1) / 2) * gap)); actors.push({ name: 'CmnObj_ItemBox000_A_00', pos: [q[0], q[1] + 1.3, q[2]] }); }
   }
-  if (o.coins) for (let s = o.itemFirst + o.itemEvery / 2; s < L - 80; s += o.itemEvery) {
+  if (o.coins) for (let s = o.itemFirst + o.itemEvery / 2; s < sEnd - 80; s += o.itemEvery) {
     for (let k = 0; k < 5; k++) { const r = C.frame(s + k * 4); if (gapAt(r)) continue; const q = H(off(r, hw * 0.5 * (Math.floor(s / o.itemEvery) % 2 ? 1 : -1))); actors.push({ name: 'CmnObj_Coin000_A_00', pos: [q[0], q[1] + 1.0, q[2]] }); }
   }
   // rail paths (RailSlidePath) along the tubes: a node wherever the wall bends a few degrees (and at least every 20 m), in rails of up to 30 nodes
@@ -335,8 +358,11 @@ export function generate(points, o, cap) {
   const gapPieces = gaps.filter(g => g.type === 'glide').map(g => { const a = rings[Math.max(0, g.i0 - 1)], b = rings[Math.min(N, g.i1 + 1)], len = b.s - a.s + (b.s < a.s ? L : 0);
     return { kind: 'glidepanel', s: a.s - 3.2, x: 0, len: Math.round(len + 40), auto: true }; });
   for (const g of gaps) { const a = rings[Math.max(0, g.i0 - 1)], b = rings[Math.min(N, g.i1 + 1)]; if (Math.min(a.p[1], b.p[1]) - (mn[1] - 0.05) < 3) { warn.push('A gap needs a drop under it: raise the points round it a few metres above the lowest part of the track.'); break; } }
-  const stats = { length: L, segments: N, parts: out.length, perPart, checkpoints: last, lapNodes: nL, routeNodes: nR, items: actors.filter(a => /ItemBox/.test(a.name)).length };
-  return { parts: out, lap, route, actors, rings, stats, warn, bounds: [mn, mx], opts: o, railPaths, gapPieces, gaps };
+  const stats = { length: sEnd, segments: N, parts: out.length, perPart, checkpoints: last, lapNodes: nL, routeNodes: nR, items: actors.filter(a => /ItemBox/.test(a.name)).length };
+  applySections(lap, o.race, o.sections, !C.open);   // section races: lap checks and the goal
+  // one-way: the paths stop at the end instead of joining back up
+  const ends = C.open ? { lapRails: [{ nodes: lap, next: [] }], routeRails: [{ nodes: route, next: [] }] } : {};
+  return { parts: out, lap, route, actors, rings, stats, warn, bounds: [mn, mx], opts: o, railPaths, gapPieces, gaps, open: C.open, ...ends };
 }
 
 // track space -> game world (the start line sits where Rainbow Road's start grid is)

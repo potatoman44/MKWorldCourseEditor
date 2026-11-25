@@ -37,7 +37,7 @@ export const dashGeometry = model => pieceGeometry(PIECES.boost, model, null);
 
 // the road's frame at s (between its rings): p, t (the way you drive), l (left), up
 export function boostFrame(g, s) {
-  const R = g.rings, L = g.stats.length; s = ((s % L) + L) % L;
+  const R = g.rings, L = g.stats.length; s = g.open ? Math.min(R[R.length - 1].s, Math.max(R[0].s, s)) : ((s % L) + L) % L;
   let i = 0; while (i < R.length - 2 && R[i + 1].s <= s) i++;
   const a = R[i], b = R[i + 1], f = Math.min(1, Math.max(0, (s - a.s) / ((b.s - a.s) || 1)));
   const lerp = (u, v) => u.map((x, j) => x + (v[j] - x) * f), nz = v => { const l = Math.hypot(...v) || 1; return v.map(x => x / l); };
@@ -45,7 +45,7 @@ export function boostFrame(g, s) {
   return { p, t, l, up, ring: i };
 }
 // keep it on the road
-export function boostClamp(g, b) { const hw = Math.max(0, g.opts.width / 2 - pieceOf(b).half); b.x = Math.max(-hw, Math.min(hw, b.x)); const L = g.stats.length; b.s = ((b.s % L) + L) % L; }
+export function boostClamp(g, b) { const hw = Math.max(0, g.opts.width / 2 - pieceOf(b).half); b.x = Math.max(-hw, Math.min(hw, b.x)); const L = g.stats.length; b.s = g.open ? Math.min(L, Math.max(0, b.s)) : ((b.s % L) + L) % L; }
 // a piece's triangles in track space: its front faces the way you drive, its middle at s, b.x metres to the left
 export function boostTris(g, b, G) {
   const def = pieceOf(b), F = boostFrame(g, b.s), f = def.fwd;
