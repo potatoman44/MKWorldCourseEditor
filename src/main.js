@@ -9,7 +9,7 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.5';
+const EDITOR_VER = 'v1.6';
 import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas } from './newslot.js';
 import { parseSarc as parseSarcM } from './sarc.js';
 import { generate, toWorld, applySections, DEFAULTS as TC_DEFAULTS, DEFAULT_POINTS, LOCK_AFTER, LOCK_BEFORE, SURF } from './trackgen.js';
@@ -1364,6 +1364,13 @@ function qcFrames(spacing) {
 
 // fences: the game's own pieces, 20 m long, running from their origin along their -Z (their face, -X, toward the road)
 const FENCE_LEN = 20;
+// floating guides (no ground under them): name ({LR} = which way the arrow points), height over the road, spacing
+const FLOAT_GUIDES = {
+  'float:BannerFlag': { name: 'CmnObj_ArrowPropellerBannerFlag000_{LR}_00', lift: 4.5, every: 22 },
+  'float:Electric': { name: 'CmnObj_ArrowPropellerElectric000_{LR}_00', lift: 4.5, every: 22 },
+  'float:Cloud': { name: 'CmnObj_ArrowJugemCloud000_{LR}_00', lift: 4, every: 22 },
+  'float:Barrier': { name: 'CmnObj_FloatingBarrier000_A_00', lift: 1.5, every: 20 },
+};
 function qcPlan() {
   const sp = Math.max(4, qnum('spacing') || 25), width = Math.max(4, qnum('width') || 30);
   const F = qcFrames(sp); if (!F) return null;
@@ -1423,6 +1430,18 @@ function qcPlan() {
       const edge = []; for (const i of run) { const st = stretch(i); (edge.length ? st.slice(1) : st).forEach(fr => { const q = fr.p.clone().addScaledVector(fr.side, sgn * (fr.w / 2 + 1)); q.y = fr.p.y; put(q, 0); edge.push(q); }); }
       const cum = [0]; for (let k = 1; k < edge.length; k++) cum.push(cum[k - 1] + Math.hypot(edge[k].x - edge[k - 1].x, edge[k].z - edge[k - 1].z));
       const total = cum.at(-1), pAt = d => { let k = 1; while (k < cum.length - 1 && cum[k] < d) k++; const t = Math.min(1, Math.max(0, (d - cum[k - 1]) / Math.max(1e-6, cum[k] - cum[k - 1]))); return edge[k - 1].clone().lerp(edge[k], t); };
+      const fl = FLOAT_GUIDES[fname];
+      if (fl) {   // floating guides: a set height over the road's surface (never down on the ground, so slopes can't swallow them)
+        const n = Math.max(1, Math.round(total / fl.every)), head = d => { const a = pAt(Math.max(0, d - 1)), b = pAt(Math.min(total, d + 1)); return b.clone().sub(a).setY(0).normalize(); };
+        for (let k = 0; k < n; k++) {
+          const d = (k + 0.5) * total / n, q = pAt(d).clone(), f0 = head(d), f1 = head(Math.min(total, d + 35));
+          q.y += fl.lift;
+          const turn = Math.atan2(f0.x * f1.z - f0.z * f1.x, f0.dot(f1)) * 180 / Math.PI;   // + : to the right
+          const lr = Math.abs(turn) < 12 ? (side === 'right' ? 'L' : 'R') : turn > 0 ? 'R' : 'L';   // the way the road goes (on a straight: in toward it)
+          plan.deco.push({ name: fl.name.replace('{LR}', lr), p: q, yaw: Math.atan2(f0.x, f0.z) + Math.PI, float: true });
+        }
+        continue;
+      }
       const n = Math.max(1, Math.round(total / FENCE_LEN));
       for (let k = 0; k < n; k++) {
         const a = pAt(k * total / n), b = pAt((k + 1) * total / n), dir = b.clone().sub(a).setY(0).normalize(), end = a.clone().addScaledVector(dir, FENCE_LEN);
@@ -1477,7 +1496,7 @@ function qcPreview() {
   $('#qc_sum').textContent = qcSummary(plan);
 }
 const qcSummary = plan => [plan.lap.length && `lap path ${plan.lap.length} points (${plan.lap.filter(f => f.cp).length} checkpoints)`, plan.routes.length && `${plan.routes.length} CPU route${plan.routes.length > 1 ? 's' : ''}`, plan.items.length && `${plan.items.length} item boxes`, plan.starts.length && `${plan.starts.length} start spots`,
-  plan.fenceCol?.length && `${plan.fenceCol.length} fence pieces`, plan.glides?.length && `${plan.glides.length} glide${plan.glides.length > 1 ? 's' : ''}`, plan.deco?.some(d => !d.fence) && `${plan.deco.filter(d => !d.fence).length} arrow signs`].filter(Boolean).join(' · ') || 'Nothing ticked.';
+  plan.fenceCol?.length && `${plan.fenceCol.length} fence pieces`, plan.deco?.some(d => d.float) && `${plan.deco.filter(d => d.float).length} floating guides`, plan.glides?.length && `${plan.glides.length} glide${plan.glides.length > 1 ? 's' : ''}`, plan.deco?.some(d => !d.fence && !d.float) && `${plan.deco.filter(d => !d.fence && !d.float).length} arrow signs`].filter(Boolean).join(' · ') || 'Nothing ticked.';
 // fences (orange, with posts), glide arches (light blue), arrow signs (pink), glide panels (blue)
 function qcDecoPreview(group, fences, glides, signs, panels) {
   const seg = (pts, color) => { if (pts.length) group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color }))); };
