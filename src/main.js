@@ -9,7 +9,7 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.1';
+const EDITOR_VER = 'v1.2';
 import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas } from './newslot.js';
 import { parseSarc as parseSarcM } from './sarc.js';
 import { generate, toWorld, DEFAULTS as TC_DEFAULTS, DEFAULT_POINTS, LOCK_AFTER, LOCK_BEFORE, SURF } from './trackgen.js';
@@ -1998,10 +1998,10 @@ function tcOpts() {
   o.tex = JSON.parse(JSON.stringify(TC.surf));
   return o;
 }
-function tcDesign() { return { v: 1, boosts: TC.boosts || [], rails: TC.railsImp || [], glideMade: TC.glideMade || [], hour: $('#tc_time').value, mm: TC.mm || null, music: $('#tc_music').value || TC.musicWant || '', musicHost: $('#tc_host').value || TC.hostWant || '', qc: TC.qc || null, name: $('#tc_name').value, mod: $('#tc_mod').value, cup: $('#tc_cup').value, vs: $('#tc_vs').value, picsvs: $('#tc_picsvs').checked, small: !$('#tc_big').checked, presets: TC.presets, nflip: $('#tc_nflip').checked, sharp: $('#tc_sharp').checked, fr: TC.fr || null, points: TC.pts, opts: tcOpts(), src: $('#tc_src').value, place: tcPlace(), map: TC.map, files: { vis: TC.vis?.name || null, col: TC.col?.name || null } }; }
+function tcDesign() { return { v: 1, boosts: TC.boosts || [], rails: TC.railsImp || [], glideMade: TC.glideMade || [], hour: $('#tc_time').value, mm: TC.mm || null, music: $('#tc_music').value || TC.musicWant || '', musicHost: $('#tc_host').value || TC.hostWant || '', qc: TC.qc || null, name: $('#tc_name').value, mod: $('#tc_mod').value, cup: $('#tc_cup').value, vs: $('#tc_vs').value, picsvs: $('#tc_picsvs').checked, small: !$('#tc_big').checked, presets: TC.presets, nflip: $('#tc_nflip').checked, sharp: $('#tc_sharp').checked, bright: tcBright(), fr: TC.fr || null, points: TC.pts, opts: tcOpts(), src: $('#tc_src').value, place: tcPlace(), map: TC.map, files: { vis: TC.vis?.name || null, col: TC.col?.name || null } }; }
 function tcApplyDesign(d) {
   TC.pts = (d.points || DEFAULT_POINTS).map(p => p[3] && typeof p[3] === 'object' ? [+p[0], +p[1], +p[2], { ...p[3] }] : [+p[0], +p[1], +p[2]]); TC.multi = new Set();
-  if (d.name) $('#tc_name').value = d.name; if (d.mod) $('#tc_mod').value = d.mod; if (d.cup !== undefined) $('#tc_cup').value = d.cup; $('#tc_vs').value = d.vs !== undefined ? d.vs : 'Rainbow_00'; $('#tc_picsvs').checked = !!d.picsvs; $('#tc_big').checked = !d.small; TC.presets = Array.isArray(d.presets) ? d.presets.map(p => ({ ...p })) : []; setTimeout(tcEnsurePresets, 0); $('#tc_nflip').checked = !!d.nflip; $('#tc_sharp').checked = !!d.sharp; TC.fr = d.fr ? { ...frDefault(), ...d.fr } : null; $('#tc_fr').checked = !!TC.fr?.on; frInfo(); TC.musicWant = d.music || ''; TC.hostWant = d.musicHost || ''; tcMusicFill(); TC.mm = d.mm || null; $('#tc_time').value = d.hour || '';
+  if (d.name) $('#tc_name').value = d.name; if (d.mod) $('#tc_mod').value = d.mod; if (d.cup !== undefined) $('#tc_cup').value = d.cup; $('#tc_vs').value = d.vs !== undefined ? d.vs : 'Rainbow_00'; $('#tc_picsvs').checked = !!d.picsvs; $('#tc_big').checked = !d.small; TC.presets = Array.isArray(d.presets) ? d.presets.map(p => ({ ...p })) : []; setTimeout(tcEnsurePresets, 0); $('#tc_nflip').checked = !!d.nflip; $('#tc_sharp').checked = !!d.sharp; $('#tc_bright').value = d.bright ? Math.round(d.bright * 100) : 100; TC.fr = d.fr ? { ...frDefault(), ...d.fr } : null; $('#tc_fr').checked = !!TC.fr?.on; frInfo(); TC.musicWant = d.music || ''; TC.hostWant = d.musicHost || ''; tcMusicFill(); TC.mm = d.mm || null; $('#tc_time').value = d.hour || '';
   const o = { ...TC_DEFAULTS, ...(d.opts || {}) };
   for (const [k, id] of Object.entries(tcFields)) $('#' + id).value = o[k];
   $('#tc_ground').checked = !!o.ground; $('#tc_coins').checked = !!o.coins;
@@ -2415,7 +2415,8 @@ async function tcBuild(asZip) {
     const variants = TC.variants.filter(v => v.bytes).map(v => ({ letter: v.letter, name: v.name, docBytes: v.bytes }));
     const mixOf = id => { const k = [...tcVM().mats.keys()].find(m => tcTexOf(m) === id && TC.texOver['#mix:' + m]); const c = k && TC.texOver['#mix:' + k].canvas; return c ? { get: (l, w, h) => canvasRGBA(c, w, h), w: c.width, h: c.height } : undefined; };
     const nrmOf = id => { const k = [...tcVM().mats.keys()].find(m => tcTexOf(m) === id && (TC.texOver['#nrm:' + m] || tcPresetNrm(m))); const c = k && (TC.texOver['#nrm:' + k]?.canvas || tcPresetNrm(k)); return c ? { get: (l, w, h) => canvasRGBA(c, w, h, true), w: c.width, h: c.height, flipY: !!$('#tc_nflip').checked } : undefined; };
-    const textures = tcImporting() ? new Map([...new Set([...tcVM().mats.keys()].map(n => tcTexOf(n)).filter(Boolean))].map(n => [n, { get: (l, w, h, a) => canvasRGBA(tcTexCanvas(n), w, h, a), w: tcTexCanvas(n).width, h: tcTexCanvas(n).height, nrm: nrmOf(n), mix: mixOf(n) }])) : tcBoostTextures(spec.parts, tcCentreTextures(spec.parts));
+    const BR = tcBright();
+    const textures = tcImporting() ? new Map([...new Set([...tcVM().mats.keys()].map(n => tcTexOf(n)).filter(Boolean))].map(n => [n, { get: (l, w, h, a) => brightRGBA(canvasRGBA(tcTexCanvas(n), w, h, a), BR), w: tcTexCanvas(n).width, h: tcTexCanvas(n).height, nrm: nrmOf(n), mix: mixOf(n) }])) : tcBoostTextures(spec.parts, tcCentreTextures(spec.parts));
     const { files, warnings } = await buildNewSlot(rd, { ...spec, ...tcSkySpec(), docBytes, variants, display, cup: $('#tc_cup').value || null, vsStage: $('#tc_vs').value || null, pictures: tcPicSpec(), picturesStandIn: $('#tc_picsvs').checked, freeRoam: await frSpec(), music: tcMusicSpec().music, textures, minimap: tcMinimapFor, stageType: tcStageType() }, m => busy(m));
     if (warnings?.length) setTimeout(() => toast('Note: ' + warnings.join(' · '), 'err'), 4500);
     busy('Writing the mod…');
@@ -2463,6 +2464,10 @@ $('#tc_vs').value = 'Rainbow_00';
 for (const id of ['tc_name', 'tc_mod', 'tc_cup', 'tc_vs', 'tc_picsvs']) $('#' + id).addEventListener('change', tcSave);
 $('#tc_nflip').addEventListener('change', tcSave);
 $('#tc_sharp').addEventListener('change', () => { TC.impKey = ''; tcUpdate(); tcSave(); });
+$('#tc_bright').addEventListener('change', () => { TC.impKey = ''; tcUpdate(); tcSave(); });
+// your textures' brightness (1 = as they are): multiplies their colour when the mod is built
+function tcBright() { const v = parseFloat($('#tc_bright').value); return isFinite(v) ? Math.min(1.5, Math.max(0.2, v / 100)) : 1; }
+function brightRGBA(px, k) { if (k === 1) return px; for (let i = 0; i < px.length; i += 4) { px[i] = Math.min(255, px[i] * k); px[i + 1] = Math.min(255, px[i + 1] * k); px[i + 2] = Math.min(255, px[i + 2] * k); } return px; }
 $('#tc_big').addEventListener('change', () => { TC.impKey = ''; tcLoadCap(); tcSave(); });
 $('#tc_build').onclick = () => tcBuild(false);
 $('#tc_zip').onclick = () => tcBuild(true);
@@ -3397,7 +3402,7 @@ function tcImpPreview() {
     if (p !== TC.psel || showCol) m.traverse(c => { if (c.isMesh) { c.material = INVIS2; delete c.userData.mat; } });
     o.add(m); TC.impGroup.add(o); TC.presetObjs.push(o);
   }
-  if (!showCol) { TC.impGroup.add(vis); tcGameMaterials(); }
+  if (!showCol) { TC.impGroup.add(vis); tcGameMaterials(); const br = tcBright(); TC.impGroup.traverse(c => { if (c.isMesh && c.material?.map && c.material.color) c.material.color.setScalar(br); }); }
   if (TC.psel) { const o = TC.presetObjs.find(o => o.userData.preset === TC.psel); if (o) { gizmo.attach(o); tcGizmoAxes(); } else tcPresetSelect(null); }
   const colModel = (TC.col ? tcCM() : tcVM());
   const col = previewMesh(colModel, xf, n => brushColor(TC.map.surf[n] || 'road_asphalt'), { wire: !showCol });

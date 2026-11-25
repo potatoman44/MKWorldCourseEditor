@@ -108,7 +108,7 @@ dialog::backdrop { background:#000a; }
 </head>
 <body>
 <div id="top">
-  <div class="brand" title="Version 1.1: Sharp edges option for imported models (fixes striped cliffs); material names wrap">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.1</span></div>
+  <div class="brand" title="Version 1.2: Texture brightness setting for your model's textures">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.2</span></div>
   <div class="menu" id="filemenu"><button id="filebtn" title="Open your dump, open a course file, save your edits as a mod">File ▾</button>
     <div class="menupop">
       <button id="openRomfs" title="The game's romfs folder from your dump">Open RomFS…</button><button id="openBase" title="Optional: the base game's romfs (version 1.0). An update's romfs only has the files that changed, so objects whose models never changed (most open-world scenery, like the Toad houses) need the base game's files to show their models.">Base game…</button>
@@ -187,6 +187,7 @@ dialog::backdrop { background:#000a; }
         <div class="qbtns"><button id="tc_level" title="Measure how the model leans and tilt it back so its ground is level (the paths you made with Quick Create tilt with it)">Level the track</button></div>
         <label class="qck"><input type="checkbox" id="tc_usetex" checked>Use the model's textures in game</label>
         <label class="qck" title="Re-makes the model's shading normals so faces meeting at a sharp angle (a cliff and the grass on top of it) aren't smoothed together. Use it if steep faces show stripes or odd shading in game: that comes from normals pointing far off their faces. Ground and gentle slopes stay smooth."><input type="checkbox" id="tc_sharp">Sharp edges (re-make the normals)</label>
+        <div class="tgrid" title="Darkens (or brightens) all of your model's textures when the mod is built, and in the view here. 100 = as they are, 80 = a fifth darker. For models whose textures look too bright or washed out in game."><span>Texture brightness (%)</span><input id="tc_bright" type="number" value="100" min="20" max="150" step="5" style="width:80px"></div>
         <div class="hint">Select the model together with its .mtl and texture images in the file window. Click a material's picture (or ?) to choose its image yourself.</div>
         <div class="qsec">Look in game (per material)</div><div id="tc_slots"></div>
         <label class="qck" title="Normal maps come in two styles: OpenGL (Blender, most free textures) and DirectX (some game rips and Substance exports). If bumps look dented instead of raised in game, tick this."><input type="checkbox" id="tc_nflip">Normal maps are DirectX style (flip green)</label>
