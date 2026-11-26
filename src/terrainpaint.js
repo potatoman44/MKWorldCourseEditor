@@ -64,17 +64,22 @@ export function setupTerrainEditor(D) {
     const mods = S.modsDir; if (!mods || !window.showDirectoryPicker) return null;
     try { if (await mods.queryPermission({ mode: 'readwrite' }) !== 'granted') return null; const m = await mods.getDirectoryHandle(P.mod, { create }); return await m.getDirectoryHandle('romfs', { create }); } catch { return null; }
   }
+  const status = (msg, err) => { const e = $('#tp_msg'); e.textContent = msg || ''; e.style.display = msg ? '' : 'none'; e.style.color = err ? '#ff8a4a' : ''; };
   async function load() {
-    if (!S.romfs || S.romfs.fake) return toast('Open RomFS first: the ground is read from your game files.', 'err');
-    if (!T.region) return toast('Drag on the map to choose an area first.', 'err');
+    status('Loading…');
+    try { await load2(); } catch (e) { console.error(e); busy(); status('Couldn\'t load: ' + (e.message || e), true); toast('Couldn\'t load the ground: ' + (e.message || e), 'err'); }
+  }
+  async function load2() {
+    if (!S.romfs || S.romfs.fake) { status('Open RomFS first (File ▸ Open RomFS…): the ground is read from your game files.', true); return toast('Open RomFS first: the ground is read from your game files.', 'err'); }
+    if (!T.region) { status('Drag on the map to choose an area first.', true); return; }
     if (T.areas.some(a => a.dirty) && !confirm('Load a new area? What you painted and haven\'t saved will be lost.')) return;
-    if (!await ensureTscb()) return;
+    if (!await ensureTscb()) { status('This RomFS has no TerrainArc/Game03_Proc.tscb: open the update\'s romfs.', true); return; }
     const [i0, j0, i1, j1] = T.region, x0 = WMIN + i0 * CELL, z0 = WMIN + j0 * CELL, x1 = WMIN + (i1 + 1) * CELL, z1 = WMIN + (j1 + 1) * CELL;
     const list = areasIn(T.tscb, x0, z0, x1, z1), mine = await modRomfs(false);
     T.areas = []; T.l6.clear(); T.l7.clear(); T.undo = []; T.redo = []; let fromMod = 0, missing = 0;
     try {
       for (let n = 0; n < list.length; n++) {
-        const a = list[n]; if (n % 6 === 0) { busy(`Reading the ground… ${n} of ${list.length}`); await new Promise(r => setTimeout(r)); }
+        const a = list[n]; if (n % 6 === 0) { busy(`Reading the ground… ${n} of ${list.length}`); status(`Reading the ground… ${n} of ${list.length}`); await new Promise(r => setTimeout(r)); }
         let file = mine && await readAt(mine, matePath(a.name)), own = !!file; if (own) fromMod++; else file = await readAt(S.romfs, matePath(a.name));
         if (!file) { missing++; continue; }
         const m = readMate(file), area = { ...a, file, m, img: m.img, orig: (own && await readOrig(a.name, file)) || m.img.slice(), dirty: false };
@@ -82,9 +87,9 @@ export function setupTerrainEditor(D) {
           (a.level === 6 ? T.l6 : T.l7).set(Math.round((a.x - WMIN) / a.size) * 4096 + Math.round((a.z - WMIN) / a.size), area); }
         T.areas.push(area);
       }
-    } catch (e) { console.error(e); toast('Couldn\'t read the ground: ' + e.message, 'err'); }
+    } catch (e) { console.error(e); status('Couldn\'t read the ground: ' + e.message, true); toast('Couldn\'t read the ground: ' + e.message, 'err'); }
     busy();
-    if (!T.l6.size) { toast(`Couldn't read this area's ground files (TerrainArc/Game03_Proc/…mate)${missing ? `: ${missing} missing` : ''}. Open the update's romfs (with the base game's romfs too if you have it).`, 'err'); syncUI(); return; }
+    if (!T.l6.size) { status(`Couldn't read this area's ground files${missing ? ` (${missing} missing)` : ''}.`, true); toast(`Couldn't read this area's ground files (TerrainArc/Game03_Proc/…mate)${missing ? `: ${missing} missing` : ''}. Open the update's romfs (with the base game's romfs too if you have it).`, 'err'); syncUI(); return; }
     busy('Drawing the map…'); await new Promise(r => setTimeout(r));
     T.picking = false; T.zoomPick = false; T.res = P.detail ? 514 : 257; T.box = [x0, z0, x1, z1];
     for (const a of [...T.l6.values(), ...T.l7.values()]) shadeOf(a);
@@ -92,7 +97,7 @@ export function setupTerrainEditor(D) {
     T.img = c; T.ctx = c.getContext('2d'); T.id = T.ctx.createImageData(W, H);
     T.view.cx = (x0 + x1) / 2; T.view.cz = (z0 + z1) / 2; fit(); T.view.k = Math.min(cv.width / (x1 - x0), cv.height / (z1 - z0)) * 0.95;
     renderAll(); countMats(); busy(); fillPalette(); syncUI(); draw();
-    toast(`Loaded ${T.areas.length} terrain files. Left-drag to paint.`, 'ok');
+    status(''); toast(`Loaded ${T.areas.length} terrain files. Left-drag to paint.`, 'ok');
     if (fromMod) toast(`Carried on from your mod "${P.mod}": ${fromMod} file(s) already painted there.`, 'ok');
   }
   // the game's own version (for "Restore"), when the file came from the mod
