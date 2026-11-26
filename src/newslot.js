@@ -7,7 +7,18 @@ import { writeBphsh } from './hk.js';
 import { writeModel, slotTextures, renameStrings, MAT } from './bfmodel.js';
 import { replaceBntx, flatBntx, renameBntx, bntxInfo } from './astc.js';
 
-const LIFT_OBJ = /Wanwan|Bomhei|Kuribo|Hanachan|Nokonoko|Togezo|Heyho/;   // Chain Chomps and walking enemies
+const LIFT_OBJ = /Wanwan|Bomhei|Kuribo|Hanachan|Nokonoko|Togezo|Heyho/;
+// an island tunnel (CmnObj_IslandTunnel000) turned to face heading yaw (atan2(x, z) of the way out). Scene rotations are
+// Rz·Ry·Rx; the blank island's tunnel at +X, (π, -π/2, -π/2), faces -X: turn that about Y, then back to angles
+function tunnelRot(yaw) {
+  const mul = (A, B) => A.map((r, i) => [0, 1, 2].map(j => r[0] * B[0][j] + r[1] * B[1][j] + r[2] * B[2][j]));
+  const ry = a => [[Math.cos(a), 0, Math.sin(a)], [0, 1, 0], [-Math.sin(a), 0, Math.cos(a)]];
+  const RA = [[0, -1, 0], [0, 0, -1], [1, 0, 0]], R = mul(ry(yaw + Math.PI / 2), RA);
+  const y = Math.asin(Math.max(-1, Math.min(1, -R[2][0])));
+  // straight up or down (gimbal lock): x and z turn about the same axis, so z = 0 and x takes it all
+  const lock = Math.abs(R[2][0]) > 0.99999, x = lock ? Math.atan2(-R[1][2], R[1][1]) : Math.atan2(R[2][1], R[2][2]), z = lock ? 0 : Math.atan2(R[1][0], R[0][0]);
+  return [x, y, z].map(Math.fround);
+}   // Chain Chomps and walking enemies
 export const SLOT = { SA: 'Rainbow_00', SZ: 'TestTrk_00', CA: 'Race_Rainbow_A_00', CZ: 'Race_TestTrk_A_00', ICON: [-330, 330] };
 // where Rainbow Road's start grid stands: the start line, facing -Z (the grid is behind it, up to 46 m back, x -8..+7)
 export const START = [0, 2785.7, 3731];
@@ -617,7 +628,7 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
     if (lap) { const p0 = lap.Points[0].Translation.map(num), p1 = lap.Points[1].Translation.map(num), dx = p1[0] - p0[0], dz = p1[2] - p0[2], l = Math.hypot(dx, dz) || 1; fw = [dx / l, dz / l]; }
     const side = [fw[1], -fw[0]], yaw = Math.atan2(fw[0], fw[1]);
     const tpos = k => [Math.fround(-fw[0] * 30 + side[0] * (k ? -12 : 12)), 2.5, Math.fround(-fw[1] * 30 + side[1] * (k ? -12 : 12))];
-    const tun = tunnels.map((t, k) => ({ ...t, Hash: T.u64(H()), InstanceId: uuid(), ParentPrefab: PF, Rotate: [Math.PI, Math.fround(yaw), -Math.PI / 2].map(Math.fround), SRTHash: T.u32(rnd32()), Translate: tpos(k) }));
+    const tun = tunnels.map((t, k) => ({ ...t, Hash: T.u64(H()), InstanceId: uuid(), ParentPrefab: PF, Rotate: tunnelRot(yaw), SRTHash: T.u32(rnd32()), Translate: tpos(k) }));
     const ps = [...objs.map(a => a.Translate), ...tun.map(a => a.Translate), ...(spec.extent || []).map(rel)];   // the model's own corners too (a big terrain reaches far past its objects)
     const mn = [0, 1, 2].map(k => Math.min(...ps.map(p => p[k]))), mx = [0, 1, 2].map(k => Math.max(...ps.map(p => p[k])));
     const box = { ...area, Hash: T.u64(H()), InstanceId: uuid(), ParentPrefab: PF, SRTHash: T.u32(rnd32()),
@@ -629,6 +640,25 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
     const ib = wbyml(idoc, ir, true); putZ('Banc/Island_World2_00.bcett.byml.zs', ib); sizes.set('Banc/Island_World2_00.bcett.byml', ib.length);
     k = 'Gyml/IslandInfo/Chocomountain_00.game__IslandInfo.bgyml';
     rep.set(k, edit(g(k), r => { r.Banc = 'Work/Banc/Scene/Island_World2_00.bcett.json'; }));
+
+    // its own way in, quicker to reach than the Choco Mountain one: a tunnel sensor 20 m in front of Mario Circuit's Free Roam
+    // warp point (warp there, drive straight on) and the tunnel you come back out of 45 m in front of it, facing on
+    { const WP = 'Banc/World_Game03/WorldResident.bcett.byml', wdoc = pbyml(await Rz(WP + '.zs')), w = wdoc.root;
+      const cp = w.Actors.find(a => a.Name === 'System_CoursePoint' && /SFCMarioCircuit_00/.test(String(a.Dynamic?.Path)));
+      const sen0 = w.Actors.find(a => a.Name === 'SystemObj_IslandTunnelSensor_00' && /Chocomountain_00/.test(String(a.Dynamic?.IslandInfo)));
+      const tun0 = sen0 && w.Actors.find(a => num(a.Hash) === num(sen0.Links?.[0]?.Dst));
+      if (cp && sen0 && tun0) {
+        for (const a of w.Actors) used.add(String(num(a.Hash)));
+        const p = cp.Translate.map(num), cy = num(cp.Rotate?.[1] ?? 0), f = [Math.sin(cy), Math.cos(cy)];
+        const at = d => [Math.fround(p[0] + f[0] * d), Math.fround(p[1]), Math.fround(p[2] + f[1] * d)];
+        const hs = H(), ht = H(), grp = { ...(cp.AreaName ? { AreaName: cp.AreaName } : {}), ...(cp.ParentPrefab ? { ParentPrefab: cp.ParentPrefab } : {}) };
+        w.Actors.push({ ...tun0, ...grp, Hash: T.u64(ht), InstanceId: uuid(), Rotate: tunnelRot(cy), SRTHash: T.u32(rnd32()), Translate: at(45) });
+        w.Actors.push({ ...sen0, ...grp, Hash: T.u64(hs), InstanceId: uuid(), Links: [{ ...sen0.Links[0], Dst: T.u64(ht), Src: T.u64(hs) }],
+          Rotate: [0, 0, 0], Scale: [6, 4, 6], SRTHash: T.u32(rnd32()), Translate: (q => [q[0], Math.fround(q[1] + 3), q[2]])(at(20)) });
+        for (const n of ['SystemObj_IslandTunnelSensor_00', 'CmnObj_IslandTunnel000_A_00']) w.CountActor[n] = T.i32(num(w.CountActor[n] || 0) + 1);
+        const out = wbyml(wdoc, w, true); putZ(WP + '.zs', out); sizes.set(WP, out.length);
+      } else warnings.push("World 2: couldn't find Mario Circuit's warp point, so the only way in is Choco Mountain's tunnel");
+    }
   }
   const newG = sarcAdd(G, add, rep); putZ(`System/GymlArchive/general_format.Product_${V}.sarc.zs`, newG); sizes.set(`System/GymlArchive/general_format.Product_${V}.sarc`, newG.length);
   for (const [kk, m] of Object.entries(P.adds)) {
