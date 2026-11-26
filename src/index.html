@@ -113,7 +113,7 @@ dialog::backdrop { background:#000a; }
 </head>
 <body>
 <div id="top">
-  <div class="brand" title="Version 1.14: the Terrain editor shows what Load is doing (and why it failed) in its own panel">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.14</span></div>
+  <div class="brand" title="Version 1.15: Terrain editor: four detail levels, much faster loading, progress bar">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.15</span></div>
   <div class="menu" id="filemenu"><button id="filebtn" title="Open your dump, open a course file, save your edits as a mod">File ▾</button>
     <div class="menupop">
       <button id="openRomfs" title="The game's romfs folder from your dump">Open RomFS…</button><button id="openBase" title="Optional: the base game's romfs (version 1.0). An update's romfs only has the files that changed, so objects whose models never changed (most open-world scenery, like the Toad houses) need the base game's files to show their models.">Base game…</button>
@@ -436,9 +436,9 @@ dialog::backdrop { background:#000a; }
 <dialog id="tpdlg">
   <div id="tp_side">
     <div class="ohead"><h3>Terrain editor</h3><button id="tp_close" title="Close">✕</button></div>
-    <div class="hint" id="tp_state"></div><div id="tp_msg" style="display:none;font-weight:600;font-size:12px"></div>
+    <div class="hint" id="tp_state"></div><div id="tp_msg" style="display:none;font-weight:600;font-size:12px"></div><div id="tp_progwrap" style="display:none"><progress id="tp_prog" style="width:100%;height:12px" value="0" max="1"></progress><div class="hint" id="tp_progtxt"></div></div>
     <div class="qbtns"><button id="tp_area" title="Choose another piece of the world">Choose area…</button><button id="tp_load" class="hot" title="Read the chosen area's ground (every level of detail)">Load</button></div>
-    <div class="tpsl" style="grid-template-columns:62px 1fr"><span>Detail</span><select id="tp_detail" title="Normal: the 250 m ground files (about 1 m per pixel), areas up to 1.5 km. High: the game's finest files (about 0.5 m) where it has them (round the courses), areas up to 1 km."><option value="0">Normal (about 1 m)</option><option value="1">High (about 0.5 m)</option></select></div>
+    <div class="tpsl" style="grid-template-columns:62px 1fr"><span>Detail</span><select id="tp_detail" title="How detailed the map is. More detail: smaller areas and slower loading. Whatever you pick, saving paints every level of detail the game has under your painting, so it shows near and far."></select></div>
     <div class="qbtns"><button id="tp_zoom" title="Pick a smaller part of the loaded area and work on just that part, at high detail">Zoom in on a part…</button></div>
     <div class="hint" id="tp_pickbar">Drag on the map to pick the area (250 m squares), then press Load. Mouse wheel zooms, right-drag pans.</div>
     <div class="tpsec">Brush</div>
