@@ -595,6 +595,41 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
   if (spec.vsExtra) { k = 'Gyml/UICourseSelectStageList/Normal.game__UICourseSelectStageList.bgyml';
     rep.set(k, edit(g(k), r => { const nv = x => Number(x && typeof x === 'object' && 'v' in x ? x.v : x); if (!r.StageList.some(x => nv(x) === hSZ)) r.StageList.push(T.u32(hSZ)); })); }
   if (spec.cup) { k = `Gyml/GrandprixCupSettingGParam/${spec.cup}.game__GrandprixCupSettingGParam.bgyml`; rep.set(k, edit(g(k), r => { r.CourseList[0] = { CourseId: T.u32(hCZ) }; })); }
+  // (test) World 2: the track and everything round it as its own island scene, the way the game's secret tunnel islands
+  // (Storm Clouds, Choco Mountain...) are separate scenes. It takes the place of Choco Mountain's island, so driving into
+  // that tunnel in Free Roam goes there. The scene is the game's blank island without its room: our objects, an island
+  // area box round them and the two tunnels (in and out) just behind the start line
+  if (spec.island) {
+    progress('Making World 2…');
+    const num = v => (v && typeof v === 'object' && 'v' in v) ? Number(v.v) : Number(v);
+    const idoc = pbyml(await Rz('Banc/Island_Blank_00_Fix.bcett.byml.zs')), ir = idoc.root, cr = pbyml(banc.bytes).root;
+    const rel = p => [Math.fround(num(p[0]) - START[0]), Math.fround(num(p[1]) - START[1]), Math.fround(num(p[2]) - START[2])];
+    const used = new Set(), H = () => { let h; do h = BigInt.asUintN(64, (BigInt(rnd32()) << 32n) | BigInt(rnd32())); while (!h || used.has(String(h))); used.add(String(h)); return h; };
+    const PF = 'Scene/Island_World2_00.bcett.json';
+    const tunnels = ir.Actors.filter(a => a.Name === 'CmnObj_IslandTunnel000_A_00'), area = ir.Actors.find(a => a.Name === 'SystemObj_IslandArea_00');
+    const objs = cr.Actors.filter(a => /^CmnObj_/.test(a.Name || '') && a.Translate).map(a => {
+      const b = { Gyaml: a.Gyaml, Hash: T.u64(H()), InstanceId: uuid(), IsGridify: false, Name: a.Name, ParentPrefab: PF, Rotate: (a.Rotate || [0, 0, 0]).map(num), SRTHash: T.u32(rnd32()), Translate: rel(a.Translate) };
+      if (LIFT_OBJ.test(a.Name)) b.Translate[1] = Math.fround(b.Translate[1] + 1);
+      if (a.Scale) b.Scale = a.Scale; if (a.Dynamic) b.Dynamic = a.Dynamic; return b; });
+    // which way the track runs at the start: from the lap path's first point to its second
+    const lap = (cr.Rails || []).find(r => r.Name === 'LapPathGraph' && r.Points?.length > 1);
+    let fw = [0, 1];
+    if (lap) { const p0 = lap.Points[0].Translation.map(num), p1 = lap.Points[1].Translation.map(num), dx = p1[0] - p0[0], dz = p1[2] - p0[2], l = Math.hypot(dx, dz) || 1; fw = [dx / l, dz / l]; }
+    const side = [fw[1], -fw[0]], yaw = Math.atan2(fw[0], fw[1]);
+    const tpos = k => [Math.fround(-fw[0] * 30 + side[0] * (k ? -12 : 12)), 2.5, Math.fround(-fw[1] * 30 + side[1] * (k ? -12 : 12))];
+    const tun = tunnels.map((t, k) => ({ ...t, Hash: T.u64(H()), InstanceId: uuid(), ParentPrefab: PF, Rotate: [Math.PI, Math.fround(yaw), -Math.PI / 2].map(Math.fround), SRTHash: T.u32(rnd32()), Translate: tpos(k) }));
+    const ps = [...objs.map(a => a.Translate), ...tun.map(a => a.Translate), ...(spec.extent || []).map(rel)];   // the model's own corners too (a big terrain reaches far past its objects)
+    const mn = [0, 1, 2].map(k => Math.min(...ps.map(p => p[k]))), mx = [0, 1, 2].map(k => Math.max(...ps.map(p => p[k])));
+    const box = { ...area, Hash: T.u64(H()), InstanceId: uuid(), ParentPrefab: PF, SRTHash: T.u32(rnd32()),
+      Scale: [0, 1, 2].map(k => Math.fround((mx[k] - mn[k]) / 2 + (k === 1 ? 200 : 400))), Translate: [0, 1, 2].map(k => Math.fround((mx[k] + mn[k]) / 2)) };
+    ir.Actors = [box, ...tun, ...objs];
+    const ca = {}; for (const a of ir.Actors) ca[a.Name] = T.i32((ca[a.Name]?.v || 0) + 1); ir.CountActor = ca;
+    ir.AABB = { Max: mx.map((v, k) => Math.fround(v + (k === 1 ? 200 : 400))), Min: mn.map((v, k) => Math.fround(v - (k === 1 ? 200 : 400))) };   // wide margins: a terrain model reaches past its objects
+    ir.FilePath = PF;
+    const ib = wbyml(idoc, ir, true); putZ('Banc/Island_World2_00.bcett.byml.zs', ib); sizes.set('Banc/Island_World2_00.bcett.byml', ib.length);
+    k = 'Gyml/IslandInfo/Chocomountain_00.game__IslandInfo.bgyml';
+    rep.set(k, edit(g(k), r => { r.Banc = 'Work/Banc/Scene/Island_World2_00.bcett.json'; }));
+  }
   const newG = sarcAdd(G, add, rep); putZ(`System/GymlArchive/general_format.Product_${V}.sarc.zs`, newG); sizes.set(`System/GymlArchive/general_format.Product_${V}.sarc`, newG.length);
   for (const [kk, m] of Object.entries(P.adds)) {
     const rel = `System/GymlArchive/${ARCN[kk]}.Product_${V}.sarc`, nb = sarcAdd(ARraw[kk], m, new Map());

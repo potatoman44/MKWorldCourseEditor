@@ -9,7 +9,7 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.8.1';
+const EDITOR_VER = 'v1.9';
 import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas } from './newslot.js';
 import { parseSarc as parseSarcM } from './sarc.js';
 import { generate, toWorld, applySections, DEFAULTS as TC_DEFAULTS, DEFAULT_POINTS, LOCK_AFTER, LOCK_BEFORE, SURF } from './trackgen.js';
@@ -2026,11 +2026,11 @@ function tcOpts() {
   o.tex = JSON.parse(JSON.stringify(TC.surf));
   return o;
 }
-function tcDesign() { return { v: 1, race: $('#tc_race').value, boosts: TC.boosts || [], rails: TC.railsImp || [], glideMade: TC.glideMade || [], hour: $('#tc_time').value, mm: TC.mm || null, music: $('#tc_music').value || TC.musicWant || '', musicHost: $('#tc_host').value || TC.hostWant || '', qc: TC.qc || null, name: $('#tc_name').value, mod: $('#tc_mod').value, cup: $('#tc_cup').value, vs: $('#tc_vs').value, picsvs: $('#tc_picsvs').checked, small: !$('#tc_big').checked, presets: TC.presets, nflip: $('#tc_nflip').checked, sharp: $('#tc_sharp').checked, bright: tcBright(), fr: TC.fr || null, points: TC.pts, opts: tcOpts(), src: $('#tc_src').value, place: tcPlace(), map: TC.map, files: { vis: TC.vis?.name || null, col: TC.col?.name || null } }; }
+function tcDesign() { return { v: 1, w2: $('#tc_w2').checked, race: $('#tc_race').value, boosts: TC.boosts || [], rails: TC.railsImp || [], glideMade: TC.glideMade || [], hour: $('#tc_time').value, mm: TC.mm || null, music: $('#tc_music').value || TC.musicWant || '', musicHost: $('#tc_host').value || TC.hostWant || '', qc: TC.qc || null, name: $('#tc_name').value, mod: $('#tc_mod').value, cup: $('#tc_cup').value, vs: $('#tc_vs').value, picsvs: $('#tc_picsvs').checked, small: !$('#tc_big').checked, presets: TC.presets, nflip: $('#tc_nflip').checked, sharp: $('#tc_sharp').checked, bright: tcBright(), fr: TC.fr || null, points: TC.pts, opts: tcOpts(), src: $('#tc_src').value, place: tcPlace(), map: TC.map, files: { vis: TC.vis?.name || null, col: TC.col?.name || null } }; }
 function tcApplyDesign(d) {
   TC.pts = (d.points || DEFAULT_POINTS).map(p => p[3] && typeof p[3] === 'object' ? [+p[0], +p[1], +p[2], { ...p[3] }] : [+p[0], +p[1], +p[2]]); TC.multi = new Set();
   if (d.name) $('#tc_name').value = d.name; if (d.mod) $('#tc_mod').value = d.mod; if (d.cup !== undefined) $('#tc_cup').value = d.cup; $('#tc_vs').value = d.vs !== undefined ? d.vs : 'Rainbow_00'; $('#tc_picsvs').checked = !!d.picsvs; $('#tc_big').checked = !d.small; TC.presets = Array.isArray(d.presets) ? d.presets.map(p => ({ ...p })) : []; setTimeout(tcEnsurePresets, 0); $('#tc_nflip').checked = !!d.nflip; $('#tc_sharp').checked = !!d.sharp; $('#tc_bright').value = d.bright ? Math.round(d.bright * 100) : 100; TC.fr = d.fr ? { ...frDefault(), ...d.fr } : null; $('#tc_fr').checked = !!TC.fr?.on; frInfo(); TC.musicWant = d.music || ''; TC.hostWant = d.musicHost || ''; tcMusicFill(); TC.mm = d.mm || null; $('#tc_time').value = d.hour || '';
-  $('#tc_race').value = ['laps', 'loop', 'ab'].includes(d.race) ? d.race : 'laps'; tcRaceUI();
+  $('#tc_race').value = ['laps', 'loop', 'ab'].includes(d.race) ? d.race : 'laps'; tcRaceUI(); $('#tc_w2').checked = !!d.w2;
   const o = { ...TC_DEFAULTS, ...(d.opts || {}) };
   for (const [k, id] of Object.entries(tcFields)) $('#' + id).value = o[k];
   $('#tc_ground').checked = !!o.ground; $('#tc_coins').checked = !!o.coins;
@@ -2447,7 +2447,7 @@ async function tcBuild(asZip) {
     const nrmOf = id => { const k = [...tcVM().mats.keys()].find(m => tcTexOf(m) === id && (TC.texOver['#nrm:' + m] || tcPresetNrm(m))); const c = k && (TC.texOver['#nrm:' + k]?.canvas || tcPresetNrm(k)); return c ? { get: (l, w, h) => canvasRGBA(c, w, h, true), w: c.width, h: c.height, flipY: !!$('#tc_nflip').checked } : undefined; };
     const BR = tcBright();
     const textures = tcImporting() ? new Map([...new Set([...tcVM().mats.keys()].map(n => tcTexOf(n)).filter(Boolean))].map(n => [n, { get: (l, w, h, a) => brightRGBA(canvasRGBA(tcTexCanvas(n), w, h, a), BR), w: tcTexCanvas(n).width, h: tcTexCanvas(n).height, nrm: nrmOf(n), mix: mixOf(n) }])) : tcBoostTextures(spec.parts, tcCentreTextures(spec.parts));
-    const { files, warnings } = await buildNewSlot(rd, { ...spec, ...tcSkySpec(), docBytes, variants, display, cup: $('#tc_cup').value || null, vsStage: ($('#tc_vs').value || '').startsWith('+') ? null : ($('#tc_vs').value || null), vsExtra: $('#tc_vs').value === '+extra', pictures: tcPicSpec(), picturesStandIn: $('#tc_picsvs').checked, freeRoam: await frSpec(), music: tcMusicSpec().music, textures, minimap: tcMinimapFor, stageType: tcStageType() }, m => busy(m));
+    const { files, warnings } = await buildNewSlot(rd, { ...spec, ...tcSkySpec(), docBytes, variants, display, cup: $('#tc_cup').value || null, vsStage: ($('#tc_vs').value || '').startsWith('+') ? null : ($('#tc_vs').value || null), vsExtra: $('#tc_vs').value === '+extra', pictures: tcPicSpec(), picturesStandIn: $('#tc_picsvs').checked, freeRoam: $('#tc_w2').checked ? null : await frSpec(), island: $('#tc_w2').checked, music: tcMusicSpec().music, textures, minimap: tcMinimapFor, stageType: tcStageType() }, m => busy(m));
     if (warnings?.length) setTimeout(() => toast('Note: ' + warnings.join(' · '), 'err'), 4500);
     busy('Writing the mod…');
     if (asZip) {
@@ -2985,6 +2985,7 @@ async function frOpen() {
   $('#fr_close').onclick = () => { $('#frdlg').close(); tcSave(); frInfo(); };
   $('#frdlg').addEventListener('close', () => { tcSave(); frInfo(); tcUpdate(); });
   $('#tc_frmap').onclick = frOpen;
+  $('#tc_w2').onchange = () => { tcSave(); tcUpdate(); };
   $('#tc_fr').onchange = () => { if (!TC.fr) TC.fr = frDefault(); TC.fr.on = $('#tc_fr').checked; tcSave(); frInfo(); tcUpdate(); if (TC.fr.on) frLoadMap().then(() => { frInfo(); tcUpdate(); }); };
 }
 // what the build gets: where the track's origin goes in the world, its height and turn
