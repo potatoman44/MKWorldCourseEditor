@@ -9,8 +9,10 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.8 test 16';
-import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas } from './newslot.js';
+const EDITOR_VER = 'v1.8 test 17';
+import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas, sarcAdd as nsSarcAdd, mmh3 as nsMmh3, msbtAppend, parseMsbt as nsParseMsbt } from './newslot.js';
+import { setupTrackPack } from './trackpack.js';
+import { renameBntx as pkRenameBntx } from './astc.js';
 import { parseSarc as parseSarcM } from './sarc.js';
 import { generate, toWorld, applySections, DEFAULTS as TC_DEFAULTS, DEFAULT_POINTS, LOCK_AFTER, LOCK_BEFORE, SURF } from './trackgen.js';
 import { modelCapacity } from './bfmodel.js';
@@ -2423,6 +2425,18 @@ async function tcWorldSpec(withParts) {
   const railPaths = (tcImporting() ? TC.railsImp.map(tcRailNodes) : g.railPaths || []).filter(r => r.length >= 2).map(r => r.map(toW));
   return { g, w, rd, spec: { glidePaths: glides, glideMade: TC.glideMade, railPaths, laps: g.opts.laps, raceType: g.opts.race, parts: w.parts, lap: w.lap, route: w.route, routes: w.routes, lapRails: w.lapRails, routeRails: w.routeRails, starts: w.starts, actors: w.actors, extent: w.extent, startHeight: tcImporting() && !(w.starts && w.starts.length) ? (x, z) => tcHeightW(x, 0, z) : null } };
 }
+async function tcBuildSpec() {
+    const display = $('#tc_name').value.trim() || 'Custom Track';
+    const { g, rd, spec } = await tcWorldSpec(true);
+    const docBytes = TC.docBytes ? await tcFinishedDoc() : null;   // finished: the course from the course view
+    if (S.customTrack) tcFlushDoc();
+    const variants = TC.variants.filter(v => v.bytes).map(v => ({ letter: v.letter, name: v.name, docBytes: v.bytes }));
+    const mixOf = id => { const k = [...tcVM().mats.keys()].find(m => tcTexOf(m) === id && TC.texOver['#mix:' + m]); const c = k && TC.texOver['#mix:' + k].canvas; return c ? { get: (l, w, h) => canvasRGBA(c, w, h), w: c.width, h: c.height } : undefined; };
+    const nrmOf = id => { const k = [...tcVM().mats.keys()].find(m => tcTexOf(m) === id && (TC.texOver['#nrm:' + m] || tcPresetNrm(m))); const c = k && (TC.texOver['#nrm:' + k]?.canvas || tcPresetNrm(k)); return c ? { get: (l, w, h) => canvasRGBA(c, w, h, true), w: c.width, h: c.height, flipY: !!$('#tc_nflip').checked } : undefined; };
+    const BR = tcBright();
+    const textures = tcImporting() ? new Map([...new Set([...tcVM().mats.keys()].map(n => tcTexOf(n)).filter(Boolean))].map(n => [n, { get: (l, w, h, a) => brightRGBA(canvasRGBA(tcTexCanvas(n), w, h, a), BR), w: tcTexCanvas(n).width, h: tcTexCanvas(n).height, nrm: nrmOf(n), mix: mixOf(n) }])) : tcBoostTextures(spec.parts, tcCentreTextures(spec.parts));
+  return { g, rd, spec: { ...spec, ...tcSkySpec(), docBytes, variants, display, cup: $('#tc_cup').value || null, vsStage: ($('#tc_vs').value || '').startsWith('+') ? null : ($('#tc_vs').value || null), vsExtra: $('#tc_vs').value === '+extra', pictures: tcPicSpec(), picturesStandIn: $('#tc_picsvs').checked, freeRoam: $('#tc_w2').checked ? null : await frSpec(), island: $('#tc_w2').checked, music: tcMusicSpec().music, textures, minimap: tcMinimapFor, stageType: tcStageType() } };
+}
 async function tcBuild(asZip) {
   if (!S.romfs || S.romfs.fake) return toast('Open the RomFS folder first (Open RomFS… → your dump\'s romfs folder): the track is built from your game files.', 'err');
   const modName = $('#tc_mod').value.trim().replace(/[^A-Za-z0-9_-]+/g, '') || 'CustomTrack'; $('#tc_mod').value = modName;
@@ -2442,15 +2456,8 @@ async function tcBuild(asZip) {
   }
   busy('Building the track…');
   try {
-    const { g, rd, spec } = await tcWorldSpec(true);
-    const docBytes = TC.docBytes ? await tcFinishedDoc() : null;   // finished: the course from the course view
-    if (S.customTrack) tcFlushDoc();
-    const variants = TC.variants.filter(v => v.bytes).map(v => ({ letter: v.letter, name: v.name, docBytes: v.bytes }));
-    const mixOf = id => { const k = [...tcVM().mats.keys()].find(m => tcTexOf(m) === id && TC.texOver['#mix:' + m]); const c = k && TC.texOver['#mix:' + k].canvas; return c ? { get: (l, w, h) => canvasRGBA(c, w, h), w: c.width, h: c.height } : undefined; };
-    const nrmOf = id => { const k = [...tcVM().mats.keys()].find(m => tcTexOf(m) === id && (TC.texOver['#nrm:' + m] || tcPresetNrm(m))); const c = k && (TC.texOver['#nrm:' + k]?.canvas || tcPresetNrm(k)); return c ? { get: (l, w, h) => canvasRGBA(c, w, h, true), w: c.width, h: c.height, flipY: !!$('#tc_nflip').checked } : undefined; };
-    const BR = tcBright();
-    const textures = tcImporting() ? new Map([...new Set([...tcVM().mats.keys()].map(n => tcTexOf(n)).filter(Boolean))].map(n => [n, { get: (l, w, h, a) => brightRGBA(canvasRGBA(tcTexCanvas(n), w, h, a), BR), w: tcTexCanvas(n).width, h: tcTexCanvas(n).height, nrm: nrmOf(n), mix: mixOf(n) }])) : tcBoostTextures(spec.parts, tcCentreTextures(spec.parts));
-    const { files, warnings } = await buildNewSlot(rd, { ...spec, ...tcSkySpec(), docBytes, variants, display, cup: $('#tc_cup').value || null, vsStage: ($('#tc_vs').value || '').startsWith('+') ? null : ($('#tc_vs').value || null), vsExtra: $('#tc_vs').value === '+extra', pictures: tcPicSpec(), picturesStandIn: $('#tc_picsvs').checked, freeRoam: $('#tc_w2').checked ? null : await frSpec(), island: $('#tc_w2').checked, music: tcMusicSpec().music, textures, minimap: tcMinimapFor, stageType: tcStageType() }, m => busy(m));
+    const { g, rd, spec: full } = await tcBuildSpec();
+    const { files, warnings } = await buildNewSlot(rd, full, m => busy(m));
     if (warnings?.length) setTimeout(() => toast('Note: ' + warnings.join(' · '), 'err'), 4500);
     busy('Writing the mod…');
     if (asZip) {
@@ -2965,6 +2972,13 @@ async function trOpen() {
 {
   const openTerrain = setupTerrainEditor({ $, el, toast, busy, S, readAt, writeAt, walk, permit, zsDecompress, zsStore, parseRstb, rstbGet, rstbSet, writeRstb, manifestFor, modMeta, makeZip, saveFile, FRM, FR_HALF, frLoadMap, idb });
   $('#terrainEd').onclick = () => openTerrain();
+}
+// ---------------------------------------------------------------- Track pack creator (your tracks + the Track list menu, in one mod)
+{
+  const openPack = setupTrackPack({ $, el, toast, busy, S, writeAt, walk, permit, zsDecompress, zsStore, parseRstb, rstbGet, rstbSet, writeRstb, manifestFor, idb,
+    romReader, gameVersion, parseByml, writeByml, parseSarc, sarcAdd: nsSarcAdd, mmh3: nsMmh3, msbtAppend, parseMsbt: nsParseMsbt, renameBntx: pkRenameBntx, buildNewSlot,
+    TCAPI: { unzip: b => unzip(b), projectZip: () => tcProjectZip(), active: () => TC.active, open: () => tcOpen(), close: () => tcClose(), openProject: (n, b) => tcOpenProject(n, b), buildSpec: () => tcBuildSpec() } });
+  $('#fm_pack').onclick = () => openPack();
 }
 function frCentre() { const sh = frShape(); if (!sh.box) return [0, 0]; return [(sh.box[0][0] + sh.box[1][0]) / 2, (sh.box[0][2] + sh.box[1][2]) / 2]; }
 async function frOpen() {

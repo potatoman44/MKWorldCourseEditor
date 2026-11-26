@@ -409,7 +409,11 @@ function partFiles(AR, part, central, templ, texNames) {
  * returns Map(romfs path -> bytes ready to write) and a report
  */
 export async function buildNewSlot(rd, spec, progress = () => {}) {
-  const { SA, SZ, CA, CZ } = SLOT, files = new Map(), sizes = new Map();
+  // spec.slot (track packs): another slot's names. SZ 'XXXXXXX_00' and CZ 'Race_XXXXXXX_A_00' must be the same length as
+  // Rainbow Road's (stage files are renamed in place); tag: 4 letters that replace 'CTrk' in the track's part and texture names
+  const SL = spec.slot ? { ...SLOT, ...spec.slot } : SLOT, { SA, SZ, CA, CZ } = SL, TAG = SL.tag || 'CTrk', SZ7 = SZ.slice(0, SZ.length - 3), files = new Map(), sizes = new Map();
+  if (SZ.length !== SA.length || CZ.length !== CA.length || TAG.length !== 4) throw new Error('slot names must be the same length as Rainbow Road\'s');
+  if (spec.slot) spec = { ...spec, parts: spec.parts.map(pt => ({ ...pt, name: pt.name.replace('CTrk', TAG) })) };
   const V = await gameVersion(rd);
   if (!V) throw new Error('this RomFS has no System/Resource/ResourceSizeTable.Product.###… file: pick the game\'s romfs folder (for 1.1 and later, the update\'s romfs)');
   const R = async p => { const b = await rd(p); if (!b) throw new Error('missing from the dump: ' + p + (p.includes(V) ? ` (your dump is version ${verLabel(V)})` : '')); return b; };
@@ -430,7 +434,7 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
   const ST = slotTextures(central), texFiles = new Map(), texIds = new Map(), flats = new Set();
   const sidx = slot => String(MAT[slot]).padStart(2, '0');
   // one texture file per image, whatever look it's drawn with (materials find textures by name)
-  const albName = id => { if (!texIds.has(id)) texIds.set(id, { name: `CTrkTex${String(texIds.size).padStart(3, '0')}_Alb`, id, mask: false }); return texIds.get(id).name; };
+  const albName = id => { if (!texIds.has(id)) texIds.set(id, { name: `${TAG}Tex${String(texIds.size).padStart(3, '0')}_Alb`, id, mask: false }); return texIds.get(id).name; };
   // pictures from the game's own courses: copied under a short name, with their own normal and surface maps when they have them
   const gameExtra = new Map();
   for (const part of spec.parts) for (const id of Object.values(part.tex || {})) {
@@ -445,12 +449,12 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
       m[t.alb] = albName(id);
       const gx = gameExtra.get(id), own = spec.textures.get(id)?.nrm;
       if ((gx?.nrm || own) && t.nrm) m[t.nrm] = albName(id).replace(/_Alb$/, '_Nrm');   // its own normal map (the game's, or one you picked)
-      else if (t.nrm) { m[t.nrm] = `CTrkFlat_${sidx(slot)}_Nrm`; flats.add(slot + '|nrm'); }
+      else if (t.nrm) { m[t.nrm] = `${TAG}Flat_${sidx(slot)}_Nrm`; flats.add(slot + '|nrm'); }
       if (gx?.emm && t.emm) m[t.emm] = albName(id).replace(/_Alb$/, '_Emm');   // its glow (Rainbow Road)
-      else if (t.emm) { m[t.emm] = `CTrkBlack_${sidx(slot)}_Emm`; flats.add(slot + '|emm'); }
+      else if (t.emm) { m[t.emm] = `${TAG}Black_${sidx(slot)}_Emm`; flats.add(slot + '|emm'); }
       if ((gx?.mix || spec.textures.get(id)?.mix) && t.mix) m[t.mix] = albName(id).replace(/_Alb$/, '_Mix');   // its own surface map (the game's, or one you picked)
-      else if (t.mix) { m[t.mix] = `CTrkMix_${sidx(slot)}_Mix`; flats.add(slot + '|mix'); }   // the surface settings without the original pattern
-      if (t.msk) { m[t.msk] = albName(id).replace(/^CTrkTex/, 'CTrkMsk').replace(/_Alb$/, '_Msk'); texIds.get(id).mask = true; }   // see-through: the mask comes from the image's alpha
+      else if (t.mix) { m[t.mix] = `${TAG}Mix_${sidx(slot)}_Mix`; flats.add(slot + '|mix'); }   // the surface settings without the original pattern
+      if (t.msk) { m[t.msk] = albName(id).replace(TAG + 'Tex', TAG + 'Msk').replace(/_Alb$/, '_Msk'); texIds.get(id).mask = true; }   // see-through: the mask comes from the image's alpha
     }
     return m;
   };
@@ -498,14 +502,14 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
       putZ(`Tex/${xname}.bntx.zs`, xout); sizes.set(`Tex/${xname}.bntx`, xout.length);
     }
     if (mask) {   // white = solid, black = cut away
-      const M = pick(mskT, want), mname = name.replace(/^CTrkTex/, 'CTrkMsk').replace(/_Alb$/, '_Msk');
+      const M = pick(mskT, want), mname = name.replace(TAG + 'Tex', TAG + 'Msk').replace(/_Alb$/, '_Msk');
       const mout = renameBntx(replaceBntx(M.b, (l, w, h) => { const p = get(l, w, h, true), o = new Uint8Array(p.length); for (let i = 0; i < p.length; i += 4) { const a = p[i + 3] >= 128 ? 255 : 0; o[i] = o[i + 1] = o[i + 2] = a; o[i + 3] = 255; } return o; }), M.src, mname);
       putZ(`Tex/${mname}.bntx.zs`, mout); sizes.set(`Tex/${mname}.bntx`, mout.length);
     }
   }
   for (const f of flats) {
     const [slot, kind] = f.split('|'), src = ST[slot][kind];
-    const name = { nrm: `CTrkFlat_${sidx(slot)}_Nrm`, emm: `CTrkBlack_${sidx(slot)}_Emm`, mix: `CTrkMix_${sidx(slot)}_Mix` }[kind];
+    const name = { nrm: `${TAG}Flat_${sidx(slot)}_Nrm`, emm: `${TAG}Black_${sidx(slot)}_Emm`, mix: `${TAG}Mix_${sidx(slot)}_Mix` }[kind];
     // normal maps keep X in RGB and Y in alpha: flat is 128 everywhere. Mix: that look's average values, so it keeps its shine but loses its pattern
     const col = { nrm: [128, 128, 128, 128], emm: [0, 0, 0, 255], mix: MIX_AVG[slot] || [160, 40, 160, 255] }[kind];
     const out = renameBntx(flatBntx(await Rz(`Tex/${src}.bntx.zs`), col), src, name);
@@ -547,7 +551,7 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
   const variants = [];
   for (const v of spec.variants || []) {
     if (!/^[B-Y]$/.test(v.letter || '') || !v.docBytes) continue;
-    const CV = `Race_TestTrk_${v.letter}_00`, b = courseFromDoc(v.docBytes, spec); let start = null;
+    const CV = `Race_${SZ7}_${v.letter}_00`, b = courseFromDoc(v.docBytes, spec); let start = null;
     if (spec.freeRoam) { const m = worldMove(b.bytes); b.bytes = m.bytes; start = m.start; }
     putZ(`Banc/${CV}[Game03].bcett.byml.zs`, b.bytes); sizes.set(`Banc/${CV}[Game03].bcett.byml`, b.bytes.length);
     files.set(`Banc/PathAdditionalData/${CV}.byml`, writePad(b.routeHashes));
@@ -592,12 +596,12 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
   add.set(`Gyml/CourseAreaGParam/${SZ}.game__CourseAreaGParam.bgyml`, edit(g(`Gyml/CourseAreaGParam/${SA}.game__CourseAreaGParam.bgyml`), r => { r.NormalCourse = [T.u32(hCZ)]; if (spec.stageType) r.StageType = spec.stageType; if (spec.vsExtra) r.StageType = 'Underground';
     // the extra routes, as the lap types the game offers for a course (1.8's way of adding Crown City-style variants)
     if (variants.length) r.AdditionalCourseAttachments = variants.map(v => ({ NormalCourse: T.u32(mmh3(v.CV)), Weight: T.i32(75) }));
-    if (spec.pictures?.badge) r.UIStageIcon = 'Sign_CTrkNew'; if (spec.pictures?.map) r.UIGrandprixStageIcon = 'LSign_TestTrk'; }));
+    if (spec.pictures?.badge) r.UIStageIcon = `Sign_${TAG}New`; if (spec.pictures?.map) r.UIGrandprixStageIcon = `LSign_${SZ7}`; }));
   add.set(`Gyml/StageWarpGParam/${SZ}.game__StageWarpGParam.bgyml`, g(`Gyml/StageWarpGParam/${SA}.game__StageWarpGParam.bgyml`));
   let k = 'Gyml/UIIDConverterGParam/Stage.game__UIIDConverterGParam.bgyml'; rep.set(k, edit(g(k), r => { r.StrToInt[SZ] = T.i32(30); }));
   k = 'Gyml/Map2DIconDicGParam/StageIllust.game__Map2DIconDicGParam.bgyml';
   rep.set(k, edit(g(k), r => { const walk = o => { if (!o || typeof o !== 'object' || o instanceof Typed) return false;
-      if (o[SA] && o[SA].Position) { o[SZ] = cloneTyped(o[SA]); o[SZ].Position = { X: SLOT.ICON[0], Y: SLOT.ICON[1] }; delete o[SZ].Type; return true; }
+      if (o[SA] && o[SA].Position) { o[SZ] = cloneTyped(o[SA]); o[SZ].Position = { X: SL.ICON[0], Y: SL.ICON[1] }; delete o[SZ].Type; return true; }
       return Object.values(o).some(walk); };
     if (!walk(r)) throw new Error('icon dict not found'); }));
   // VS and Time Trials: picking this stage on the course map starts the new track instead (Grand Prix keeps the real course)
@@ -710,7 +714,7 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
       const items = NEWLABS.map(l => [l, textOf(l)]);
       let nb = msbtAppend(hit.msbt, items, `Name_${CA}`), out;
       if (nb) out = sarcAdd(hit.sarcRaw, new Map(), new Map([[hit.file, nb]]));
-      else { const dir = hit.file.includes('/') ? hit.file.slice(0, hit.file.lastIndexOf('/') + 1) : ''; out = sarcAdd(hit.sarcRaw, new Map([[dir + 'CTrkNames.msbt', buildMsbt(parseMsbt(hit.msbt).hdr, NEWLABS, items.map(x => x[1]))]]), new Map()); }
+      else { const dir = hit.file.includes('/') ? hit.file.slice(0, hit.file.lastIndexOf('/') + 1) : ''; out = sarcAdd(hit.sarcRaw, new Map([[dir + TAG + 'Names.msbt', buildMsbt(parseMsbt(hit.msbt).hdr, NEWLABS, items.map(x => x[1]))]]), new Map()); }
       if (hit.zs) { putZ(hit.path, out); sizes.set(hit.path.replace(/\.zs$/, ''), out.length); } else files.set(hit.path, out);
     } catch (e) { console.error(e); warnings.push(`${reg} name: ${e.message} (the track still works, without that name)`); }
   }
@@ -735,7 +739,7 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
     putL(LAY(pre + SZ), PIC[pre] ? paint(base, PIC[pre]) : base);
   }
   if (P2.course) for (const v of ['A', 'B', 'C', 'D']) { const raw = await Rz(LAY(`C_ResultStage_${SA}_${v}`)).catch(() => null); if (raw) putL(LAY(`C_ResultStage_${SZ}_${v}`), paint(ren(raw), P2.course)); }
-  if (P2.badge) putL(LAY('Sign_CTrkNew'), paint(renameBntx(await Rz(LAY('Sign_Rainbow')), 'Sign_Rainbow', 'Sign_CTrkNew'), P2.badge));   // (a texture's new name must end in the same letter)
+  if (P2.badge) putL(LAY(`Sign_${TAG}New`), paint(renameBntx(await Rz(LAY('Sign_Rainbow')), 'Sign_Rainbow', `Sign_${TAG}New`), P2.badge));   // (a texture's new name must end in the same letter)
   // the stand-in course in VS / Time Trials can show your pictures too (that changes them wherever the game shows that course)
   if (spec.vsStage && spec.picturesStandIn && (P2.course || P2.map || P2.badge)) {
     const area = pbyml(g(`Gyml/CourseAreaGParam/${spec.vsStage}.game__CourseAreaGParam.bgyml`)).root, typ = String(area.StageType || '');

@@ -108,12 +108,12 @@ dialog::backdrop { background:#000a; }
 #tp_main { flex:1; display:flex; flex-direction:column; min-width:0; } #tp_cv { flex:1; width:100%; min-height:0; display:block; cursor:crosshair; outline:none; } #tp_read { padding:4px 8px; font-size:12px; color:var(--dim); border-top:1px solid var(--line); min-height:18px; }
 #tpdlg .tpsec { font-weight:700; margin-top:6px; color:var(--dim); text-transform:uppercase; font-size:11px; letter-spacing:.04em; } #tpdlg .tptools { display:flex; gap:4px; } #tpdlg .tptools button { flex:1; } #tpdlg button.on { background:var(--acc2); border-color:var(--acc2); color:#fff; }
 #tpdlg .tpsl { display:grid; grid-template-columns:62px 1fr 44px; gap:6px; align-items:center; } .tpsw { display:inline-block; width:14px; height:14px; border-radius:3px; border:1px solid #0006; vertical-align:middle; margin-right:4px; }
-#tpdlg.coll .tplook, #tpdlg:not(.coll) .tpcoll, #tpdlg:not(.both) .tpboth { display:none !important; } .tpsub { color:var(--dim); font-size:11px; } .tpcgrid { display:flex; flex-wrap:wrap; gap:3px; margin:2px 0 6px; } .tpcsw { width:20px; height:20px; border-radius:4px; border:1px solid #0008; cursor:pointer; } .tpcsw.on { outline:2px solid #fff; outline-offset:1px; } .tpclabel { font-size:11px; color:var(--dim); display:flex; justify-content:space-between; align-items:center; margin-top:2px; } .tpcadd { font-size:11px; padding:1px 6px; } #tp_pal { flex:1; min-height:160px; overflow-y:auto; border:1px solid var(--line); border-radius:6px; } .tpsw2 { display:inline-flex; gap:2px; align-items:center; } .tpthumb { width:14px; height:14px; border-radius:3px; image-rendering:auto; } .tprow { display:grid; grid-template-columns:36px 24px 1fr auto; gap:4px; align-items:center; padding:2px 6px; cursor:pointer; } .tprow:hover { background:#ffffff10; } .tprow.on { background:#3d7bfd33; } .tprow .cnt { color:var(--dim); font-size:11px; } #tp_cur { padding:4px 0; }
+#tpdlg.coll .tplook, #tpdlg:not(.coll) .tpcoll, #tpdlg:not(.both) .tpboth { display:none !important; } .tpsub { color:var(--dim); font-size:11px; } .tpcgrid { display:flex; flex-wrap:wrap; gap:3px; margin:2px 0 6px; } .tpcsw { width:20px; height:20px; border-radius:4px; border:1px solid #0008; cursor:pointer; } .tpcsw.on { outline:2px solid #fff; outline-offset:1px; } .tpclabel { font-size:11px; color:var(--dim); display:flex; justify-content:space-between; align-items:center; margin-top:2px; } .tpcadd { font-size:11px; padding:1px 6px; } .pkrow { display:grid; grid-template-columns:28px 1fr 1fr 30px 30px; gap:6px; align-items:center; margin:3px 0; } .pkrow .hint { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .pknum { color:var(--dim); text-align:right; } #tp_pal { flex:1; min-height:160px; overflow-y:auto; border:1px solid var(--line); border-radius:6px; } .tpsw2 { display:inline-flex; gap:2px; align-items:center; } .tpthumb { width:14px; height:14px; border-radius:3px; image-rendering:auto; } .tprow { display:grid; grid-template-columns:36px 24px 1fr auto; gap:4px; align-items:center; padding:2px 6px; cursor:pointer; } .tprow:hover { background:#ffffff10; } .tprow.on { background:#3d7bfd33; } .tprow .cnt { color:var(--dim); font-size:11px; } #tp_cur { padding:4px 0; }
 </style>
 </head>
 <body>
 <div id="top">
-  <div class="brand" title="Version 1.8 test 16: Terrain editor can paint the look and the collision together (Both)">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.8 test 16</span></div>
+  <div class="brand" title="Version 1.8 test 16: Terrain editor can paint the look and the collision together (Both)">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.8 test 17</span></div>
   <div class="menu" id="filemenu"><button id="filebtn" title="Open your dump, open a course file, save your edits as a mod">File ▾</button>
     <div class="menupop">
       <button id="openRomfs" title="The game's romfs folder from your dump">Open RomFS…</button><button id="openBase" title="Optional: the base game's romfs (version 1.0). An update's romfs only has the files that changed, so objects whose models never changed (most open-world scenery, like the Toad houses) need the base game's files to show their models.">Base game…</button>
@@ -123,7 +123,7 @@ dialog::backdrop { background:#000a; }
       <button id="save" title="Ctrl+S: write a mod into the recomp's mods folder">Save as mod</button>
       <button id="dl" title="Download this course's .bcett.byml.zs">Download file</button>
       <hr><div class="menulabel">Your track</div>
-      <button id="fm_trnew" title="Start a new track project">New track…</button><button id="fm_tropen" title="Open a .mkwtrack.zip project">Open track project…</button><button id="fm_trsave" title="Save your track project as one .mkwtrack.zip">Save track project</button><button id="fm_trbuild" title="Build your track into mkw-recomp\mods">Build track mod</button>
+      <button id="fm_trnew" title="Start a new track project">New track…</button><button id="fm_tropen" title="Open a .mkwtrack.zip project">Open track project…</button><button id="fm_trsave" title="Save your track project as one .mkwtrack.zip">Save track project</button><button id="fm_trbuild" title="Build your track into mkw-recomp\mods">Build track mod</button><button id="fm_pack" title="Several of your tracks in one mod, each in its own slot, listed in the Track list menu (+ on the VS / Time Trials map)">Track pack…</button>
     </div></div>
   <button id="reopen" class="hot" style="display:none" title="Open the RomFS folder you used last time">Reopen last RomFS</button>
   <select id="course"><option value="">— open the RomFS first —</option></select>
@@ -432,6 +432,21 @@ dialog::backdrop { background:#000a; }
     </div>
   </div>
   <div class="row-end" style="margin-top:10px"><button id="fr_close" class="hot">Done</button></div>
+</dialog>
+<dialog id="pkdlg" style="width:min(760px,96vw)">
+  <div class="ohead"><h3>Track pack</h3><button id="pk_close">✕</button></div>
+  <div class="hint">Your tracks in one mod, each in its own new slot, listed in the Track list menu (press + on the VS / Time Trials map). Add your track projects (.mkwtrack.zip, or the .zip of a mod built with the Track Creator). Each track gets its own folder in the list, with its routes inside.</div>
+  <div class="qbtns" style="margin:8px 0"><button id="pk_add" class="hot">Add track projects…</button><span id="pk_count" class="hint"></span></div>
+  <input id="pk_file" type="file" accept=".zip" multiple hidden>
+  <div id="pk_list" style="max-height:40vh;overflow-y:auto"></div>
+  <div class="tgrid" style="display:grid;grid-template-columns:150px 1fr;gap:6px;align-items:center;margin-top:10px">
+    <span>Pack mod name</span><input id="pk_name" type="text" value="TrackPack">
+    <span title="The Track list mod in your mods folder: the pack takes the menu's files (its AI changes, pictures and course list) from it">Track list mod</span><input id="pk_menu" type="text" value="TrackList">
+  </div>
+  <label class="qck"><input type="checkbox" id="pk_one">All the tracks in one folder</label>
+  <div id="pk_folderrow" class="tgrid" style="display:none;grid-template-columns:150px 1fr;gap:6px;align-items:center"><span>Folder name</span><input id="pk_folder" type="text" value="Custom tracks"></div>
+  <div class="hint">Turn off the Track list mod and the tracks' own mods when you turn the pack on: it has all of them in it. The list can hold 512 courses (the game's own take about 257), in up to 128 folders.</div>
+  <div class="row-end" style="margin-top:10px"><button id="pk_build" class="hot">Build pack</button></div>
 </dialog>
 <dialog id="tpdlg">
   <div id="tp_side">
