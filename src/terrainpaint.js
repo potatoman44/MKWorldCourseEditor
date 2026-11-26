@@ -108,11 +108,13 @@ export function setupTerrainEditor(D) {
   }
 
   // ------------------------------------------------------------ loading the view
+  // each step says what it's doing (and gives up with a message if a step hangs), so a stuck load shows where
+  const step = async (msg, p, ms = 30000) => { status(msg); let t; const to = new Promise((_, rej) => t = setTimeout(() => rej(new Error(`no answer after ${ms / 1000} s while: ${msg}`)), ms)); try { return await Promise.race([p, to]); } finally { clearTimeout(t); } };
   async function load() {
-    if (T.loading) return;
-    T.loading = true; status('');
+    if (T.loading) { status('Still loading… (press Load again in a moment if nothing happens)'); if (Date.now() - T.loading > 60000) T.loading = false; return; }
+    T.loading = Date.now(); status('Starting…');
     try { await load2(); } catch (e) { console.error(e); status('Couldn\'t load: ' + (e.message || e), true); toast('Couldn\'t load the ground: ' + (e.message || e), 'err'); }
-    T.loading = false; progress(); busy(); syncUI();
+    T.loading = false; progress(); busy(); syncUI(); if ($('#tp_msg').textContent.endsWith('…')) status('');
   }
   async function load2() {
     if (!S.romfs || S.romfs.fake) { status('Open RomFS first (File ▸ Open RomFS…): the ground is read from your game files.', true); return; }
@@ -120,18 +122,18 @@ export function setupTerrainEditor(D) {
     const r = T.region;
     if (r[2] - r[0] >= MAXC() || r[3] - r[1] >= MAXC()) { T.picking = true; draw(); status(`That area is too big for ${DET().label.split(' (')[0].toLowerCase()} detail (up to ${km()} km across): choose a smaller one, or less detail.`, true); return; }
     if (T.ops.length && !confirm('Load a new area? What you painted and haven\'t saved will be lost.')) return;
-    if (!await ensureTscb()) { status('This RomFS has no TerrainArc/Game03_Proc.tscb: open the update\'s romfs (and the base game\'s romfs too, if you have it).', true); return; }
-    T.dirs = await dirsOf();
+    if (!await step('Reading the world\'s ground list (Game03_Proc.tscb)…', ensureTscb())) { status('This RomFS has no TerrainArc/Game03_Proc.tscb: open the update\'s romfs (and the base game\'s romfs too, if you have it).', true); return; }
+    T.dirs = await step('Finding the ground folder…', dirsOf());
     if (!T.dirs.game && !T.dirs.base) { status('This RomFS has no TerrainArc/Game03_Proc folder: open the update\'s romfs.', true); return; }
     const x0 = WMIN + r[0] * CELL, z0 = WMIN + r[1] * CELL, x1 = WMIN + (r[2] + 1) * CELL, z1 = WMIN + (r[3] + 1) * CELL, L = DET().L;
     // the view's own level (and, for High, level 6 where level 7 has no file)
     const want = areasIn(T.tscb, x0, z0, x1, z1).filter(a => a.level === L || (L === 7 && a.level === 6));
-    const got = await readMany(want, () => true, 'Reading the ground…');
+    status(`Reading ${want.length} ground files…`); const got = await step('Reading the ground files…', readMany(want, () => true, 'Reading the ground…'), 180000);
     T.areas = got.filter(Boolean); T.byName = new Map(T.areas.map(a => [a.name, a])); T.disp = new Map();
     for (const a of T.areas) { if (!T.disp.has(a.level)) T.disp.set(a.level, new Map()); T.disp.get(a.level).set(Math.round((a.x - WMIN) / a.size) * 65536 + Math.round((a.z - WMIN) / a.size), a); }
     T.ops = []; T.undo = []; T.redo = [];
     if (!T.areas.length) { status(`Couldn't read this area's ground files (TerrainArc/Game03_Proc/…mate). Open the update's romfs (with the base game's romfs too if you have it).`, true); return; }
-    progress(1, 1, 'Drawing the map…'); $('#tp_progtxt').textContent = 'Drawing the map…'; await tick();
+    progress(1, 1, 'Drawing the map…'); $('#tp_progtxt').textContent = 'Drawing the map…'; status('Drawing the map…'); await tick();
     T.picking = false; T.zoomPick = false; T.shownL = L; T.box = [x0, z0, x1, z1]; T.ppm = 257 / (16000 / 2 ** L);
     for (const a of T.areas) shadeOf(a);
     const W = Math.ceil((x1 - x0) * T.ppm), H = Math.ceil((z1 - z0) * T.ppm), c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -407,6 +409,9 @@ export function setupTerrainEditor(D) {
   $('#tp_zip').onclick = () => save(true);
   $('#tp_close').onclick = () => { if (T.ops.length && !confirm('Close the terrain editor? Unsaved painting stays here until you load another area or close the editor program.')) return; dlg.close(); };
   window.addEventListener('resize', () => dlg.open && draw());
+  // anything that goes wrong while the editor is open shows in its panel
+  window.addEventListener('error', e => { if (dlg.open) status('Error: ' + (e.message || e.error), true); });
+  window.addEventListener('unhandledrejection', e => { if (dlg.open) status('Error: ' + (e.reason?.message || e.reason), true); });
 
   if (window.__mkwe) window.__mkwe.TP = { T, P, load, strokeTo, endStroke, newStroke, buildFiles, draw };
   return async function open() {
