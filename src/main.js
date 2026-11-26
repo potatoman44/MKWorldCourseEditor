@@ -9,7 +9,7 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.10';
+const EDITOR_VER = 'v1.11';
 import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas } from './newslot.js';
 import { parseSarc as parseSarcM } from './sarc.js';
 import { generate, toWorld, applySections, DEFAULTS as TC_DEFAULTS, DEFAULT_POINTS, LOCK_AFTER, LOCK_BEFORE, SURF } from './trackgen.js';
@@ -19,6 +19,7 @@ import { BRUSHES } from './surfaces.js';
 import { PIECES, pieceGeometry, glowPicture, boostTris, boostClamp, addBoosts, glidePaths, glideStraight, GLIDES, GLIDE_LEN } from './boost.js';
 import { readMeshShape } from './phive.js';
 import { PRESETS, presetById, loadPreset, brushFor } from './presets.js';
+import { setupTerrainEditor } from './terrainpaint.js';
 import { TILE, TILES, WORLD_MIN, tileName, tileCentre, tileAt, terrainTris, rasterTile, tileMesh, trisPerTile, heightIn } from './terrain.js';
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
@@ -2957,6 +2958,11 @@ async function trOpen() {
   $('#tc_trdetail').onchange = () => { TR.step = +$('#tc_trdetail').value; trSave(); if (TR.tiles.size) trLoad(); else trInfo(); };
   $('#tc_trshow').onchange = () => { TR.show = $('#tc_trshow').checked; trSave(); GL.key = ''; if (TC.active) tcUpdate(true); };
   trInfo();
+}
+// ---------------------------------------------------------------- Terrain editor (ground materials, top-down)
+{
+  const openTerrain = setupTerrainEditor({ $, el, toast, busy, S, readAt, writeAt, walk, permit, zsDecompress, zsStore, parseRstb, rstbGet, rstbSet, writeRstb, manifestFor, modMeta, makeZip, saveFile, FRM, FR_HALF, frLoadMap, idb });
+  $('#terrainEd').onclick = () => openTerrain();
 }
 function frCentre() { const sh = frShape(); if (!sh.box) return [0, 0]; return [(sh.box[0][0] + sh.box[1][0]) / 2, (sh.box[0][2] + sh.box[1][2]) / 2]; }
 async function frOpen() {

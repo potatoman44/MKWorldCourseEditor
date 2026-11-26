@@ -104,11 +104,16 @@ dialog::backdrop { background:#000a; }
 .mrow.tt > span:nth-child(2), .mrow.tsurfm > span:nth-child(2) { grid-column:2 / 4; white-space:normal; overflow-wrap:anywhere; line-height:1.25; }
 .mrow.tsurfm { grid-template-columns:30px 1fr !important; row-gap:3px; } .mrow.tsurfm > :nth-child(1) { grid-row:1 / 3; align-self:start; } .mrow.tsurfm > select { grid-column:2; } .mrow select { padding:2px 4px; } body.tcimport .gen-only { opacity:.4; } body.tcimport .gen-only2, body.tcimport .gen-hide { display:none !important; } body.tcmode #qcpanel { left:10px; right:auto; z-index:5; } .ohead { display:flex; align-items:center; justify-content:space-between; gap:8px; } .ohead h3 { margin:0; } .qhelp { width:26px; height:26px; padding:0; border-radius:50%; font-weight:700; flex:none; } .qhelp.on { background:var(--acc2); border-color:var(--acc2); color:#fff; } .ohelp { background:#1b2130; border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin:8px 0; font-size:12px; line-height:1.45; } .ohelp p { margin:4px 0; } .ohelp ul { margin:2px 0 4px 16px; padding:0; } .kv.unset input { opacity:.55; } .kv.unset b { opacity:.7; } #tc_add.on, #tc_wpick.on, #tc_branch.on, #tc_edit.on, #tc_additem.on { background:#f5c542; border-color:#f5c542; color:#111; }
 .tcbtn { border-color:#f5c542; }  body.tcmode #legend, body.tcmode .toggles { display:none; }
+#tpdlg { width:96vw; height:92vh; max-width:none; max-height:none; padding:0; overflow:hidden; } #tpdlg[open] { display:flex; } #tp_side { width:300px; flex:none; padding:10px 12px; overflow-y:auto; border-right:1px solid var(--line); display:flex; flex-direction:column; gap:6px; font-size:12px; }
+#tp_main { flex:1; display:flex; flex-direction:column; min-width:0; } #tp_cv { flex:1; width:100%; min-height:0; display:block; cursor:crosshair; outline:none; } #tp_read { padding:4px 8px; font-size:12px; color:var(--dim); border-top:1px solid var(--line); min-height:18px; }
+#tpdlg .tpsec { font-weight:700; margin-top:6px; color:var(--dim); text-transform:uppercase; font-size:11px; letter-spacing:.04em; } #tpdlg .tptools { display:flex; gap:4px; } #tpdlg .tptools button { flex:1; } #tpdlg button.on { background:var(--acc2); border-color:var(--acc2); color:#fff; }
+#tpdlg .tpsl { display:grid; grid-template-columns:62px 1fr 44px; gap:6px; align-items:center; } .tpsw { display:inline-block; width:14px; height:14px; border-radius:3px; border:1px solid #0006; vertical-align:middle; margin-right:4px; }
+#tp_pal { flex:1; min-height:160px; overflow-y:auto; border:1px solid var(--line); border-radius:6px; } .tprow { display:grid; grid-template-columns:20px 24px 1fr auto; gap:4px; align-items:center; padding:2px 6px; cursor:pointer; } .tprow:hover { background:#ffffff10; } .tprow.on { background:#3d7bfd33; } .tprow .cnt { color:var(--dim); font-size:11px; } #tp_cur { padding:4px 0; }
 </style>
 </head>
 <body>
 <div id="top">
-  <div class="brand" title="Version 1.10: World 2 also has its own way in, in front of the Mario Circuit warp">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.10</span></div>
+  <div class="brand" title="Version 1.11: Terrain editor (paint the open world's ground materials)">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.11</span></div>
   <div class="menu" id="filemenu"><button id="filebtn" title="Open your dump, open a course file, save your edits as a mod">File ▾</button>
     <div class="menupop">
       <button id="openRomfs" title="The game's romfs folder from your dump">Open RomFS…</button><button id="openBase" title="Optional: the base game's romfs (version 1.0). An update's romfs only has the files that changed, so objects whose models never changed (most open-world scenery, like the Toad houses) need the base game's files to show their models.">Base game…</button>
@@ -127,7 +132,7 @@ dialog::backdrop { background:#000a; }
   <span class="sp"></span>
   <label id="snapWrap" class="snapw" title="Moved, added and Quick Create objects land on the track surface (End drops the selection)"><input type="checkbox" id="snap" checked>Snap to ground</label>
   <button id="minimap" title="Draw this course's minimap from its lap paths">Minimap…</button>
-  <button id="quick" title="Lay out a lap path, CPU routes, item boxes and a start grid from one guide line">Quick Create</button>
+  <button id="terrainEd" title="Terrain editor: paint the open world's ground materials (a top-down map) and save them as a mod">Terrain</button><button id="quick" title="Lay out a lap path, CPU routes, item boxes and a start grid from one guide line">Quick Create</button>
   <button id="tcOpen" class="tcbtn" title="Your own brand-new track (model, collision, paths) in its own new slot. Click again to go back to the course you had open.">My track</button><button id="tc_editmodel" class="tcbtn" style="display:none" title="Back to the Track Creator: model, materials, placement, Quick Create">Edit Model</button><span id="cv_routebox" style="display:none"><select id="cv_route" title="Which of the track's routes you're editing (each is its own lap type in game)"></select><button id="cv_routenew" title="Make a new route from a copy of this one">+ Route</button></span>
   <div class="grp"><button id="undo" title="Ctrl+Z">↶</button><button id="redo" title="Ctrl+Y">↷</button></div>
   <div class="grp"><button data-mode="translate" title="Move (1)">Move</button><button data-mode="rotate" title="Rotate (2)">Rotate</button><button data-mode="scale" title="Scale (3)">Scale</button><button id="space" title="L: world / local axes">World</button></div>
@@ -427,6 +432,32 @@ dialog::backdrop { background:#000a; }
     </div>
   </div>
   <div class="row-end" style="margin-top:10px"><button id="fr_close" class="hot">Done</button></div>
+</dialog>
+<dialog id="tpdlg">
+  <div id="tp_side">
+    <div class="ohead"><h3>Terrain editor</h3><button id="tp_close" title="Close">✕</button></div>
+    <div class="hint" id="tp_state"></div>
+    <div class="qbtns"><button id="tp_area" title="Choose another piece of the world">Choose area…</button><button id="tp_load" class="hot" title="Read the chosen area's ground (every level of detail)">Load</button></div>
+    <div class="hint" id="tp_pickbar">Drag on the map to pick the area (250 m squares, up to 6 × 6). Mouse wheel zooms, right-drag pans.</div>
+    <div class="tpsec">Brush</div>
+    <div class="tptools"><button data-tptool="paint" title="Paint the chosen material (B)">Paint</button><button data-tptool="restore" title="Put the game's own ground back (E)">Restore</button><button data-tptool="pick" title="Pick the material under the cursor (I, or Alt+click)">Pick</button></div>
+    <div class="tpsl"><span>Size</span><input type="range" id="tp_size" min="0.5" max="150" step="0.5"><span id="tp_sizev"></span></div>
+    <div class="tpsl"><span>Strength</span><input type="range" id="tp_str" min="5" max="100" step="5"><span id="tp_strv"></span></div>
+    <div class="tpsl"><span>Soft edge</span><input type="range" id="tp_soft" min="0" max="100" step="5"><span id="tp_softv"></span></div>
+    <div class="qbtns"><button id="tp_undo" title="Ctrl+Z">↶ Undo</button><button id="tp_redo" title="Ctrl+Y">↷ Redo</button></div>
+    <div class="tpsec">Material</div>
+    <div id="tp_cur"></div>
+    <label class="qck"><input type="checkbox" id="tp_used" checked>Only the ones used here</label>
+    <div id="tp_pal"></div>
+    <div class="hint">The colours only tell the materials apart (in game they're tinted by other maps), and the names are best guesses. Numbers on the right: how much of the area uses each. Double-click one to name it.</div>
+    <div class="tpsec">View</div>
+    <label class="qck"><input type="checkbox" id="tp_shade">Hill shading</label><label class="qck"><input type="checkbox" id="tp_grid">250 m grid</label>
+    <div class="tpsec">Save</div>
+    <div class="tgrid" style="display:grid;grid-template-columns:70px 1fr;gap:6px;align-items:center"><span>Mod name</span><input id="tp_mod" type="text"></div>
+    <div class="qbtns"><button id="tp_save" class="hot" title="Write the mod into mkw-recomp\mods (if the mod already has painted ground, loading carries on from it)">Save as mod</button><button id="tp_zip" title="Download the mod as a .zip">Download .zip</button></div>
+    <div class="hint">Left-drag paints · Alt+click picks · right-drag or Shift+drag pans · wheel zooms · Ctrl+wheel or [ ] sizes the brush. Only how the ground looks changes: what it's made of in game (sounds, grip) stays as it was.</div>
+  </div>
+  <div id="tp_main"><canvas id="tp_cv" tabindex="0"></canvas><div id="tp_read"></div></div>
 </dialog>
 <dialog id="trdlg" style="width:min(1060px,96vw)">
   <h3 style="margin-top:0">World terrain area <span class="hint">drag on the map to choose the area · mouse wheel zooms · right-drag pans</span></h3>

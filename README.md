@@ -14,6 +14,7 @@ It runs as one Windows exe that opens the editor in its own window. You point it
   - **Paths**: Quick Create (lap path, CPU routes, item boxes, start grid, fences, glides and arrow signs from one guide line), widths, alternate routes, grind rails.
   - **Map**: the track opened like any course, to place objects and edit every path.
 - **Free Roam**: put your track in the open world. It clears the world's creatures and props from the track's area, and moves the world's edge back if the track is near it.
+- **Terrain editor** (Terrain button): a top-down map of a piece of the open world (up to 1.5 × 1.5 km). Paint its ground materials with a brush (size, strength, soft edge), put the game's own ground back, pick materials from the map, undo/redo, and save the changed terrain files as a mod. Every level of detail under the brush is painted. Height editing comes next.
 - Builds the whole mod: model, collision, paths, minimap, course pictures, names and the game's tables.
 
 ## Using it
