@@ -108,12 +108,12 @@ dialog::backdrop { background:#000a; }
 #tp_main { flex:1; display:flex; flex-direction:column; min-width:0; } #tp_cv { flex:1; width:100%; min-height:0; display:block; cursor:crosshair; outline:none; } #tp_read { padding:4px 8px; font-size:12px; color:var(--dim); border-top:1px solid var(--line); min-height:18px; }
 #tpdlg .tpsec { font-weight:700; margin-top:6px; color:var(--dim); text-transform:uppercase; font-size:11px; letter-spacing:.04em; } #tpdlg .tptools { display:flex; gap:4px; } #tpdlg .tptools button { flex:1; } #tpdlg button.on { background:var(--acc2); border-color:var(--acc2); color:#fff; }
 #tpdlg .tpsl { display:grid; grid-template-columns:62px 1fr 44px; gap:6px; align-items:center; } .tpsw { display:inline-block; width:14px; height:14px; border-radius:3px; border:1px solid #0006; vertical-align:middle; margin-right:4px; }
-#tp_pal { flex:1; min-height:160px; overflow-y:auto; border:1px solid var(--line); border-radius:6px; } .tprow { display:grid; grid-template-columns:20px 24px 1fr auto; gap:4px; align-items:center; padding:2px 6px; cursor:pointer; } .tprow:hover { background:#ffffff10; } .tprow.on { background:#3d7bfd33; } .tprow .cnt { color:var(--dim); font-size:11px; } #tp_cur { padding:4px 0; }
+#tpdlg.coll .tplook, #tpdlg:not(.coll) .tpcoll { display:none !important; } #tp_pal { flex:1; min-height:160px; overflow-y:auto; border:1px solid var(--line); border-radius:6px; } .tprow { display:grid; grid-template-columns:20px 24px 1fr auto; gap:4px; align-items:center; padding:2px 6px; cursor:pointer; } .tprow:hover { background:#ffffff10; } .tprow.on { background:#3d7bfd33; } .tprow .cnt { color:var(--dim); font-size:11px; } #tp_cur { padding:4px 0; }
 </style>
 </head>
 <body>
 <div id="top">
-  <div class="brand" title="Version 1.17: Terrain editor no longer waits forever for a folder lookup">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.17</span></div>
+  <div class="brand" title="Version 1.18: Terrain editor can paint the ground's collision (road, offroad, sand, ice…)">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.18</span></div>
   <div class="menu" id="filemenu"><button id="filebtn" title="Open your dump, open a course file, save your edits as a mod">File ▾</button>
     <div class="menupop">
       <button id="openRomfs" title="The game's romfs folder from your dump">Open RomFS…</button><button id="openBase" title="Optional: the base game's romfs (version 1.0). An update's romfs only has the files that changed, so objects whose models never changed (most open-world scenery, like the Toad houses) need the base game's files to show their models.">Base game…</button>
@@ -441,23 +441,26 @@ dialog::backdrop { background:#000a; }
     <div class="tpsl" style="grid-template-columns:62px 1fr"><span>Detail</span><select id="tp_detail" title="How detailed the map is. More detail: smaller areas and slower loading. Whatever you pick, saving paints every level of detail the game has under your painting, so it shows near and far."></select></div>
     <div class="qbtns"><button id="tp_zoom" title="Pick a smaller part of the loaded area and work on just that part, at high detail">Zoom in on a part…</button></div>
     <div class="hint" id="tp_pickbar">Drag on the map to pick the area (250 m squares), then press Load. Mouse wheel zooms, right-drag pans.</div>
+    <div class="tpsec">Editing</div>
+    <div class="tptools"><button data-tplayer="look" title="How the ground looks (its textures)">Look</button><button data-tplayer="coll" title="What the ground is in game: road, offroad, sand, ice… (grip, sounds and effects). Needs Normal or High detail.">Collision</button></div>
     <div class="tpsec">Brush</div>
     <div class="tptools"><button data-tptool="paint" title="Paint the chosen material (B)">Paint</button><button data-tptool="restore" title="Put the game's own ground back (E)">Restore</button><button data-tptool="pick" title="Pick the material under the cursor (I, or Alt+click)">Pick</button></div>
     <div class="tpsl"><span>Size</span><input type="range" id="tp_size" min="0.5" max="150" step="0.5"><span id="tp_sizev"></span></div>
-    <div class="tpsl"><span>Strength</span><input type="range" id="tp_str" min="5" max="100" step="5"><span id="tp_strv"></span></div>
-    <div class="tpsl"><span>Soft edge</span><input type="range" id="tp_soft" min="0" max="100" step="5"><span id="tp_softv"></span></div>
+    <div class="tpsl tplook"><span>Strength</span><input type="range" id="tp_str" min="5" max="100" step="5"><span id="tp_strv"></span></div>
+    <div class="tpsl tplook"><span>Soft edge</span><input type="range" id="tp_soft" min="0" max="100" step="5"><span id="tp_softv"></span></div>
     <div class="qbtns"><button id="tp_undo" title="Ctrl+Z">↶ Undo</button><button id="tp_redo" title="Ctrl+Y">↷ Redo</button></div>
-    <div class="tpsec">Material</div>
+    <div class="tpsec" id="tp_palhead">Material</div>
     <div id="tp_cur"></div>
     <label class="qck"><input type="checkbox" id="tp_used" checked>Only the ones used here</label>
     <div id="tp_pal"></div>
-    <div class="hint">The colours only tell the materials apart (in game they're tinted by other maps), and the names are best guesses. Numbers on the right: how much of the area uses each. Double-click one to name it.</div>
+    <div class="hint tpcoll">What the ground is in game. Road drives fast; offroad slows you down (light, normal or heavy); the second word is the sound and dust. The game's own dirt paths (like the ones by Mario Bros. Circuit) are Road – dirt. Collision has no soft edge: each piece of ground is one type, and the brush splits big pieces so your edges stay close to the brush.</div>
+    <div class="hint tplook">The colours only tell the materials apart (in game they're tinted by other maps), and the names are best guesses. Numbers on the right: how much of the area uses each. Double-click one to name it.</div>
     <div class="tpsec">View</div>
     <label class="qck"><input type="checkbox" id="tp_shade">Hill shading</label><label class="qck"><input type="checkbox" id="tp_grid">250 m grid</label>
     <div class="tpsec">Save</div>
     <div class="tgrid" style="display:grid;grid-template-columns:70px 1fr;gap:6px;align-items:center"><span>Mod name</span><input id="tp_mod" type="text"></div>
     <div class="qbtns"><button id="tp_save" class="hot" title="Write the mod into mkw-recomp\mods (if the mod already has painted ground, loading carries on from it)">Save as mod</button><button id="tp_zip" title="Download the mod as a .zip">Download .zip</button></div>
-    <div class="hint">Left-drag paints · Alt+click picks · right-drag or Shift+drag pans · wheel zooms · Ctrl+wheel or [ ] sizes the brush. Only how the ground looks changes: what it's made of in game (sounds, grip) stays as it was.</div>
+    <div class="hint">Left-drag paints · Alt+click picks · right-drag or Shift+drag pans · wheel zooms · Ctrl+wheel or [ ] sizes the brush. Look changes the textures only; Collision changes what the ground is in game (grip, sounds).</div>
   </div>
   <div id="tp_main"><canvas id="tp_cv" tabindex="0"></canvas><div id="tp_read"></div></div>
 </dialog>
