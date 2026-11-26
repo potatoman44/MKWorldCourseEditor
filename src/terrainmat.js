@@ -101,7 +101,7 @@ export const dominant = v => (((v >>> 16) & 255) < 128 ? v & 255 : (v >>> 8) & 2
 // (only the colour half is used: the alpha half is a flat 127). Same 0x14-byte header and zstd; 4 x 4-pixel blocks stored like the
 // other maps (block height 1), 65 x 65 blocks padded to 68 x 72.
 let blockMap = null;
-export function readColour(file) {
+export function readColour(file, full = false) {
   const dec = unpack(file), gx = 17, rows = 72, n = gx * 4 * rows, off = dec.length - n * 16, out = new Uint8Array(PX * PX * 3);
   if (!blockMap) { blockMap = new Int32Array(n);
     for (let i = 0; i < n; i++) { const gob = i >> 5, c = i & 31, b = {}; ORDER.forEach((nm, k) => b[nm] = (c >> k) & 1);
@@ -115,7 +115,43 @@ export function readColour(file) {
     const bx = (bi % 65) * 4, by = ((bi / 65) | 0) * 4;
     for (let q = 0; q < 16; q++) { const x = bx + (q & 3), y = by + (q >> 2); if (x >= PX || y >= PX) continue; const s = ((bits >>> (2 * q)) & 3) * 3, d = (y * PX + x) * 3; out[d] = pal[s]; out[d + 1] = pal[s + 1]; out[d + 2] = pal[s + 2]; }
   }
+  return full ? { rgb: out, dec, off, n } : out;
+}
+// write a colour map back: only the 4 x 4 blocks with a changed pixel are re-encoded (BC1 colour half; the alpha half is kept)
+export function writeColour(file, c, rgb, base) {
+  const dec = new Uint8Array(c.dec), px = new Float32Array(48);
+  for (let i = 0; i < c.n; i++) { const bi = blockMap[i]; if (bi < 0) continue;
+    const bx = (bi % 65) * 4, by = ((bi / 65) | 0) * 4; let changed = false;
+    for (let q = 0; q < 16 && !changed; q++) { const d = ((by + (q >> 2)) * PX + bx + (q & 3)) * 3; if (rgb[d] !== base[d] || rgb[d + 1] !== base[d + 1] || rgb[d + 2] !== base[d + 2]) changed = true; }
+    if (!changed) continue;
+    for (let q = 0; q < 16; q++) { const d = ((by + (q >> 2)) * PX + bx + (q & 3)) * 3; px[q * 3] = rgb[d]; px[q * 3 + 1] = rgb[d + 1]; px[q * 3 + 2] = rgb[d + 2]; }
+    encodeBC1(px, dec, c.off + i * 16 + 8);
+  }
+  const z = zsStore(dec), out = new Uint8Array(0x14 + z.length), dv = new DataView(out.buffer);
+  out.set(file.subarray(0, 0x0c)); dv.setUint32(0x0c, dec.length, true); dv.setUint32(0x10, z.length, true); out.set(z, 0x14);
   return out;
 }
+const to565 = (r, g, b) => ((Math.round(r * 31 / 255) << 11) | (Math.round(g * 63 / 255) << 5) | Math.round(b * 31 / 255));
+const from565 = c => [((c >> 11) & 31) * 255 / 31, ((c >> 5) & 63) * 255 / 63, (c & 31) * 255 / 31];
+function encodeBC1(px, out, o) {
+  // endpoints: the ends of the block's colour box, pulled in a little; four-colour mode (c0 > c1)
+  const mn = [255, 255, 255], mx = [0, 0, 0];
+  for (let q = 0; q < 16; q++) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], px[q * 3 + k]); mx[k] = Math.max(mx[k], px[q * 3 + k]); }
+  const inset = k => (mx[k] - mn[k]) / 16;
+  let c0 = to565(...[0, 1, 2].map(k => Math.min(255, mx[k] - inset(k)))), c1 = to565(...[0, 1, 2].map(k => Math.max(0, mn[k] + inset(k))));
+  let bits = 0;
+  if (c0 === c1) { if (c0 > 0) c1 = c0 - 1; else c0 = 1; }   // a flat block: every pixel the first colour
+  else {
+    if (c0 < c1) { const t = c0; c0 = c1; c1 = t; }
+    const a = from565(c0), b = from565(c1), pal = [a, b, a.map((v, k) => (2 * v + b[k]) / 3), a.map((v, k) => (v + 2 * b[k]) / 3)];
+    for (let q = 0; q < 16; q++) { let best = 0, bd = 1e9;
+      for (let j = 0; j < 4; j++) { const d = (px[q * 3] - pal[j][0]) ** 2 + (px[q * 3 + 1] - pal[j][1]) ** 2 + (px[q * 3 + 2] - pal[j][2]) ** 2; if (d < bd) { bd = d; best = j; } }
+      bits |= best << (2 * q); }
+    bits >>>= 0;
+  }
+  out[o] = c0 & 255; out[o + 1] = c0 >> 8; out[o + 2] = c1 & 255; out[o + 3] = c1 >> 8;
+  out[o + 4] = bits & 255; out[o + 5] = (bits >>> 8) & 255; out[o + 6] = (bits >>> 16) & 255; out[o + 7] = (bits >>> 24) & 255;
+}
+
 export const colourPath = n => `TerrainArc/Game03_Proc/${n}.color_mul2.extm`;
 export const ALBEDO_PATH = 'Tex/CmnTex_Tera_Product_Proc_Alb.bntx.zs';

@@ -8,7 +8,7 @@ import { writeBphsh } from './hk.js';
 import { tileName } from './terrain.js';
 import { MATERIALS, SUBMATERIALS } from './surfaces.js';
 import { bntxLayerRGBA } from './astc.js';
-import { readColour, colourPath, ALBEDO_PATH } from './terrainmat.js';
+import { readColour, writeColour, colourPath, ALBEDO_PATH } from './terrainmat.js';
 import { readTscb, readMate, writeMate, readHeights, areasIn, matePath, hghtPath, TSCB_PATH, paintPixel, dominant, PX, WMIN } from './terrainmat.js';
 
 const CELL = 250;   // areas are chosen in 250 m squares
@@ -46,7 +46,7 @@ export function setupTerrainEditor(D) {
   const pal = Array.from({ length: 256 }, (_, i) => colourOf(i));
   let names = {}; try { names = JSON.parse(localStorage.getItem(NAMES_KEY) || '{}'); } catch {}
   const matName = i => names[i] || KNOWN[i]?.[0] || `Material ${i}`;
-  const P = { colours: 'game', layer: 'look', surf: [4, 9], det: 2, tool: 'paint', size: 6, strength: 1, soft: 0.5, mat: 1, shade: true, grid: true, mod: 'TerrainPaint' };
+  const P = { paintCol: true, colour: [200, 160, 110], colours: 'game', layer: 'look', surf: [4, 9], det: 2, tool: 'paint', size: 6, strength: 1, soft: 0.5, mat: 1, shade: true, grid: true, mod: 'TerrainPaint' };
   try { const o = JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); if (o.det === undefined && o.detail !== undefined) o.det = o.detail ? 3 : 2; delete o.detail; Object.assign(P, o); } catch {}
   if (!(P.det >= 0 && P.det < DETAILS.length)) P.det = 2;
   const DET = () => DETAILS[P.det], MAXC = () => DET().max, km = () => (MAXC() * 0.25).toString();
@@ -67,7 +67,7 @@ export function setupTerrainEditor(D) {
     $('#tp_size').value = P.size; $('#tp_sizev').textContent = P.size + ' m';
     $('#tp_str').value = Math.round(P.strength * 100); $('#tp_strv').textContent = Math.round(P.strength * 100) + '%';
     $('#tp_soft').value = Math.round(P.soft * 100); $('#tp_softv').textContent = Math.round(P.soft * 100) + '%';
-    $('#tp_shade').checked = P.shade; $('#tp_colours').value = P.colours; $('#tp_detail').value = String(P.det); $('#tp_grid').checked = P.grid; $('#tp_mod').value = P.mod;
+    $('#tp_paintcol').checked = P.paintCol; $('#tp_colpick').value = '#' + P.colour.map(v => v.toString(16).padStart(2, '0')).join(''); $('#tp_shade').checked = P.shade; $('#tp_colours').value = P.colours; $('#tp_detail').value = String(P.det); $('#tp_grid').checked = P.grid; $('#tp_mod').value = P.mod;
     document.querySelectorAll('#tpdlg [data-tplayer]').forEach(b => b.onclick = async () => { P.layer = b.dataset.tplayer; savePrefs(); syncUI(); fillPalette(); draw(); if (P.layer === 'coll' && T.box && !T.picking) await loadCollision(); });
   document.querySelectorAll('#tpdlg [data-tptool]').forEach(b => b.classList.toggle('on', b.dataset.tptool === P.tool));
     $('#tp_cur').innerHTML = ''; $('#tp_cur').append(swatch(P.mat), el('b', {}, `${P.mat}`), ' ' + matName(P.mat));
@@ -106,7 +106,7 @@ export function setupTerrainEditor(D) {
     for (let i = 0; i < n; i++) {
       const cnt = T.counts ? T.counts[i] : 0; if (only && T.counts && !cnt) continue;
       const row = el('div', { class: 'tprow' + (i === P.mat ? ' on' : ''), title: `Material ${i}${T.tscb ? ` (texture ${T.tscb.mats[i].slice})` : ''}. Click to paint with it, double-click to rename.`,
-        onclick: () => { P.mat = i; savePrefs(); if (P.tool === 'pick') P.tool = 'paint'; syncUI(); fillPalette(); },
+        onclick: () => { P.mat = i; if (T.rawCol?.[i]) P.colour = T.rawCol[i].slice(); savePrefs(); if (P.tool === 'pick') P.tool = 'paint'; syncUI(); fillPalette(); },
         ondblclick: () => { const v = prompt(`A name for material ${i}:`, matName(i)); if (v === null) return; if (v.trim()) names[i] = v.trim(); else delete names[i]; try { localStorage.setItem(NAMES_KEY, JSON.stringify(names)); } catch {} fillPalette(); syncUI(); } },
         swatch(i), el('b', {}, String(i)), el('span', {}, matName(i)), el('span', { class: 'cnt' }, cnt ? (cnt > 9999 ? Math.round(cnt / 1000) + 'k' : String(cnt)) : ''));
       box.append(row);
@@ -139,8 +139,13 @@ export function setupTerrainEditor(D) {
     const m = readMate(file);
     if (own) { const o = await readGame(a.name + '.mate'); if (o) try { origImg = readMate(o).img; } catch {} }
     const area = { ...a, file, m, img: m.img, base: m.img.slice(), orig: origImg || m.img.slice(), own, dirty: false };
-    if (withHeights) { try { area.h = readHeights(await readGame(a.name + '.hght')); } catch { area.h = null; }
-      try { const c = await readGame(a.name + '.color_mul2.extm'); area.cm = c ? readColour(c) : null; } catch { area.cm = null; } }
+    if (withHeights) { try { area.h = readHeights(await readGame(a.name + '.hght')); } catch { area.h = null; } }
+    // the colour map (from your mod first, like the materials)
+    try {
+      let cf = await readIn(T.dirs.mod, a.name + '.color_mul2.extm'), cown = !!cf; if (!cf) cf = await readGame(a.name + '.color_mul2.extm');
+      if (cf) { const c = readColour(cf, true); area.cmFile = cf; area.cmd = c; area.cm = c.rgb; area.cmBase = c.rgb.slice(); area.cmOrig = area.cmBase; area.cown = cown;
+        if (cown) { const g = await readGame(a.name + '.color_mul2.extm'); if (g) try { area.cmOrig = readColour(g); } catch {} } }
+    } catch (e) { console.error(e); area.cm = null; }
     return area;
   }
   // read many at once (a few in flight together), with the progress bar
@@ -214,13 +219,14 @@ export function setupTerrainEditor(D) {
     toast(`Loaded. Left-drag to paint.${own ? ` Carried on from your mod "${P.mod}" (${own} file(s) already painted there).` : ''}`, 'ok');
   }
   function countMats() {
-    const c = new Uint32Array(256), g = new Float64Array(256 * 3), gn = new Uint32Array(256), [x0, z0, x1, z1] = T.box;
+    const c = new Uint32Array(256), g = new Float64Array(256 * 3), rc = new Float64Array(256 * 3), gn = new Uint32Array(256), [x0, z0, x1, z1] = T.box;
     for (const m of T.disp.values()) for (const a of m.values()) {
       const ps = a.size / 257;
       for (let q = 2; q <= 258; q++) { const z = a.z + (q - 1.5) * ps; if (z < z0 || z > z1) continue;
         for (let p = 2; p <= 258; p++) { const x = a.x + (p - 1.5) * ps; if (x < x0 || x > x1 || areaAt(x, z) !== a) continue; const k = q * PX + p, d = dominant(a.img[k]); c[d]++;
+          if (a.cm) { const o = k * 3; rc[d * 3] += a.cm[o]; rc[d * 3 + 1] += a.cm[o + 1]; rc[d * 3 + 2] += a.cm[o + 2]; }
           if (a.cm && T.mc) { const o = k * 3; g[d * 3] += a.cm[o] * T.mc[d * 3]; g[d * 3 + 1] += a.cm[o + 1] * T.mc[d * 3 + 1]; g[d * 3 + 2] += a.cm[o + 2] * T.mc[d * 3 + 2]; gn[d]++; } } } }
-    T.counts = c; T.gameCol = Array.from({ length: 256 }, (_, i) => gn[i] ? [0, 1, 2].map(j => Math.round(Math.min(255, g[i * 3 + j] / gn[i] * GAIN))) : null);
+    T.rawCol = Array.from({ length: 256 }, (_, i) => gn[i] ? [0, 1, 2].map(j => Math.round(rc[i * 3 + j] / gn[i])) : null); T.counts = c; T.gameCol = Array.from({ length: 256 }, (_, i) => gn[i] ? [0, 1, 2].map(j => Math.round(Math.min(255, g[i * 3 + j] / gn[i] * GAIN))) : null);
   }
 
   // ------------------------------------------------------------ the picture
@@ -324,6 +330,13 @@ export function setupTerrainEditor(D) {
       const base = rec.before[k];
       a.img[k] = st.tool === 'restore' ? (w >= 0.5 ? a.orig[k] : base) : paintPixel(base, st.mat, w);
       a.dirty = true; hit = true;
+      if (a.cm && (st.col || st.tool === 'restore')) {   // the colour map too
+        if (!rec.cbefore) rec.cbefore = a.cm.slice();
+        const o = k * 3, cb = rec.cbefore;
+        if (st.tool === 'restore') { if (w >= 0.5) { a.cm[o] = a.cmOrig[o]; a.cm[o + 1] = a.cmOrig[o + 1]; a.cm[o + 2] = a.cmOrig[o + 2]; } else { a.cm[o] = cb[o]; a.cm[o + 1] = cb[o + 1]; a.cm[o + 2] = cb[o + 2]; } }
+        else for (let j = 0; j < 3; j++) a.cm[o + j] = Math.round(cb[o + j] + (st.col[j] - cb[o + j]) * w);
+        a.cdirty = true;
+      }
     }
     return hit;
   }
@@ -339,7 +352,7 @@ export function setupTerrainEditor(D) {
     else { const d = Math.hypot(x - last[0], z - last[1]), n = Math.ceil(d / step); for (let i = 1; i <= n; i++) dab(last[0] + (x - last[0]) * i / n, last[1] + (z - last[1]) * i / n); }
     st.last = [x, z];
   }
-  const newStroke = () => ({ coll: P.layer === 'coll', surf: P.surf.slice(), colSnap: new Map(), tool: P.tool === 'restore' ? 'restore' : 'paint', mat: P.mat, size: P.size, soft: P.soft, strength: P.strength, dabs: [], recs: new Map(), last: null });
+  const newStroke = () => ({ col: P.tool !== 'restore' && P.paintCol ? P.colour.slice() : null, coll: P.layer === 'coll', surf: P.surf.slice(), colSnap: new Map(), tool: P.tool === 'restore' ? 'restore' : 'paint', mat: P.mat, size: P.size, soft: P.soft, strength: P.strength, dabs: [], recs: new Map(), last: null });
   function endStroke() {
     const st = T.stroke; T.stroke = null; if (!st) return;
     if (st.coll) { if (!st.colSnap.size) return;
@@ -347,32 +360,32 @@ export function setupTerrainEditor(D) {
       T.undo.push({ coll: [...st.colSnap].map(([t, s0]) => ({ t, before: s0, after: { tris: t.tris.map(tr => ({ p: tr.p, mat: tr.mat })), mats: t.mats.map(m => m.slice()), dirty: t.dirty } })) }); T.redo = [];
       fillPalette(); syncUI(); return; }
     if (!st.recs.size) return;
-    const op = { tool: st.tool, mat: st.mat, size: st.size, soft: st.soft, strength: st.strength, dabs: st.dabs };
-    T.ops.push(op); T.undo.push({ op, snaps: [...st.recs].map(([a, r]) => ({ a, before: r.before, after: a.img.slice() })) }); T.redo = [];
+    const op = { tool: st.tool, mat: st.mat, col: st.col, size: st.size, soft: st.soft, strength: st.strength, dabs: st.dabs };
+    T.ops.push(op); T.undo.push({ op, snaps: [...st.recs].map(([a, r]) => ({ a, before: r.before, after: a.img.slice(), cbefore: r.cbefore || null, cafter: r.cbefore ? a.cm.slice() : null })) }); T.redo = [];
     countMats(); fillPalette(); syncUI();
   }
   // play strokes onto an area that was read after they were painted (the other levels of detail, read when saving)
   function replay(a, ops) {
-    a.img.set(a.base); a.dirty = false;
+    a.img.set(a.base); a.dirty = false; if (a.cm) { a.cm.set(a.cmBase); a.cdirty = false; }
     for (const op of ops) { const recs = new Map(); for (const [x, z] of op.dabs) dabOn(a, op, recs, x, z); }
   }
   function applyHist(from, to, key) {
     const h = from.pop(); if (!h) return;
     if (h.coll) { for (const e of h.coll) { const s0 = e[key]; e.t.tris = s0.tris.filter(tr => !tr.dead).map(tr => ({ p: tr.p, mat: tr.mat })); e.t.mats = s0.mats.map(m => m.slice()); e.t.dirty = s0.dirty; bucket(e.t); }
       to.push(h); renderCol(); fillPalette(); syncUI(); draw(); return; }
-    for (const e of h.snaps) e.a.img.set(e[key]);
+    for (const e of h.snaps) { e.a.img.set(e[key]); const c = e[key === 'before' ? 'cbefore' : 'cafter']; if (c) e.a.cm.set(c); }
     if (key === 'before') T.ops.splice(T.ops.lastIndexOf(h.op), 1); else T.ops.push(h.op);
     // areas read later (at saving) weren't in the snapshots: play the strokes again on them
     const known = new Set(h.snaps.map(e => e.a));
     for (const a of T.areas) if (a.extra && !known.has(a)) replay(a, T.ops);
-    for (const a of T.areas) if (!a.extra) a.dirty = a.img.some((v, i) => v !== a.base[i]);
+    for (const a of T.areas) if (!a.extra) { a.dirty = a.img.some((v, i) => v !== a.base[i]); if (a.cm) a.cdirty = a.cm.some((v, i) => v !== a.cmBase[i]); }
     to.push(h); renderAll(); countMats(); fillPalette(); syncUI(); draw();
   }
   function pick(x, z) {
     if (P.layer === 'coll') { const h = colAt(x, z); if (h) { P.surf = h.t.mats[h.tr.mat].slice(0, 2); P.tool = 'paint'; savePrefs(); syncUI(); fillPalette(); } return; }
     const a = readout(x, z); if (!a) return;
     const p = Math.round(1.5 + (x - a.x) / a.size * 257), q = Math.round(1.5 + (z - a.z) / a.size * 257);
-    P.mat = dominant(a.img[q * PX + p]); P.tool = 'paint'; savePrefs(); syncUI(); fillPalette();
+    P.mat = dominant(a.img[q * PX + p]); if (a.cm) { const o = (q * PX + p) * 3; P.colour = [a.cm[o], a.cm[o + 1], a.cm[o + 2]]; } P.tool = 'paint'; savePrefs(); syncUI(); fillPalette();
     $('#tp_pal .tprow.on')?.scrollIntoView({ block: 'nearest' });
   }
 
@@ -503,6 +516,7 @@ export function setupTerrainEditor(D) {
     for (let i = 0; i < cdirty.length; i++) { const t = cdirty[i]; progress(i, cdirty.length, 'Building the collision…'); await tick();
       const out = writeBphsh(t.d, t.tris.filter(tr => !tr.dead).map(tr => [tr.p, tr.mat]), t.mats, { filter: FILTER_FF }).bytes;
       files.set(t.path, zsStore(out)); colN.push([t.path, out.length]); }
+    for (const a of T.areas) if (a.cm) { if (a.cdirty) files.set(colourPath(a.name), writeColour(a.cmFile, a.cmd, a.cm, a.cmBase)); else if (a.cown) files.set(colourPath(a.name), a.cmFile); }
     progress(0, dirty.length, 'Writing the ground files…');
     let n = 0; for (const a of dirty) { files.set(matePath(a.name), writeMate(a.file, a.m, a.img)); if (++n % 8 === 0) { progress(n, dirty.length, 'Writing the ground files…'); await tick(); } }
     let tblPath = null;
@@ -515,10 +529,10 @@ export function setupTerrainEditor(D) {
       for (const [p, n] of colN) { const k = p.replace(/\.zs$/, ''), need = Math.ceil((n * 1.25 + 16384) / 32) * 32; if (need > (rstbGet(tbl, k) || 0)) { rstbSet(tbl, k, need); changed = true; } }
       if (changed) files.set(tblPath, zsStore(writeRstb(tbl)));
     }
-    return { files, tblPath, n: dirty.length + cdirty.length };
+    return { files, tblPath, n: [...files.keys()].filter(p => !p.startsWith('System')).length };
   }
   async function save(zip) {
-    if (!T.ops.length && !T.areas.some(a => a.dirty) && ![...T.col.values()].some(t => t.dirty)) return toast('Nothing has been painted yet.');
+    if (!T.ops.length && !T.areas.some(a => a.dirty || a.cdirty) && ![...T.col.values()].some(t => t.dirty)) return toast('Nothing has been painted yet.');
     P.mod = ($('#tp_mod').value || '').trim().replace(/[^A-Za-z0-9_-]+/g, '') || 'TerrainPaint'; savePrefs(); syncUI();
     try {
       if (zip || !window.showDirectoryPicker) {
@@ -600,6 +614,8 @@ export function setupTerrainEditor(D) {
   $('#tp_zoom').onclick = () => { if (!T.box || T.picking) return toast('Load an area first, then zoom into a part of it.');
     P.det = DETAILS.length - 1; savePrefs(); T.picking = true; T.zoomPick = true; syncUI(); draw(); toast(`Drag a box round the part to work on (up to ${km()} × ${km()} km). It loads at high detail, and only that part gets painted.`); };
   $('#tp_colours').onchange = () => { P.colours = $('#tp_colours').value; savePrefs(); if (T.img) renderAll(); fillPalette(); syncUI(); draw(); };
+  $('#tp_paintcol').onchange = () => { P.paintCol = $('#tp_paintcol').checked; savePrefs(); };
+  $('#tp_colpick').oninput = () => { const v = $('#tp_colpick').value; P.colour = [1, 3, 5].map(i => parseInt(v.slice(i, i + 2), 16)); P.paintCol = true; savePrefs(); syncUI(); };
   $('#tp_grid').onchange = () => { P.grid = $('#tp_grid').checked; savePrefs(); draw(); };
   $('#tp_used').onchange = fillPalette;
   $('#tp_undo').onclick = () => applyHist(T.undo, T.redo, 'before');
