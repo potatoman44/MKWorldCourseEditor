@@ -113,7 +113,7 @@ dialog::backdrop { background:#000a; }
 </head>
 <body>
 <div id="top">
-  <div class="brand" title="Version 1.11: Terrain editor (paint the open world's ground materials)">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.11</span></div>
+  <div class="brand" title="Version 1.12: Terrain editor gets High detail and Zoom in on a part">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.12</span></div>
   <div class="menu" id="filemenu"><button id="filebtn" title="Open your dump, open a course file, save your edits as a mod">File ▾</button>
     <div class="menupop">
       <button id="openRomfs" title="The game's romfs folder from your dump">Open RomFS…</button><button id="openBase" title="Optional: the base game's romfs (version 1.0). An update's romfs only has the files that changed, so objects whose models never changed (most open-world scenery, like the Toad houses) need the base game's files to show their models.">Base game…</button>
@@ -438,6 +438,8 @@ dialog::backdrop { background:#000a; }
     <div class="ohead"><h3>Terrain editor</h3><button id="tp_close" title="Close">✕</button></div>
     <div class="hint" id="tp_state"></div>
     <div class="qbtns"><button id="tp_area" title="Choose another piece of the world">Choose area…</button><button id="tp_load" class="hot" title="Read the chosen area's ground (every level of detail)">Load</button></div>
+    <div class="tpsl" style="grid-template-columns:62px 1fr"><span>Detail</span><select id="tp_detail" title="Normal: the 250 m ground files (about 1 m per pixel), areas up to 1.5 km. High: the game's finest files (about 0.5 m) where it has them (round the courses), areas up to 1 km."><option value="0">Normal (about 1 m)</option><option value="1">High (about 0.5 m)</option></select></div>
+    <div class="qbtns"><button id="tp_zoom" title="Pick a smaller part of the loaded area and work on just that part, at high detail">Zoom in on a part…</button></div>
     <div class="hint" id="tp_pickbar">Drag on the map to pick the area (250 m squares, up to 6 × 6). Mouse wheel zooms, right-drag pans.</div>
     <div class="tpsec">Brush</div>
     <div class="tptools"><button data-tptool="paint" title="Paint the chosen material (B)">Paint</button><button data-tptool="restore" title="Put the game's own ground back (E)">Restore</button><button data-tptool="pick" title="Pick the material under the cursor (I, or Alt+click)">Pick</button></div>
