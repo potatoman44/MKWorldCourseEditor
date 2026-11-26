@@ -73,15 +73,23 @@ export function setupTerrainEditor(D) {
   }
 
   // ------------------------------------------------------------ reading files (folder handles looked up once)
+  // a lookup that gives up (null) instead of hanging: some folder lookups never answer on some PCs
+  const within = (p, ms) => Promise.race([p.catch(() => null), new Promise(r => setTimeout(() => r(null), ms))]);
   async function dirsOf() {
     const sub = async root => { try { return await (await root.getDirectoryHandle('TerrainArc')).getDirectoryHandle('Game03_Proc'); } catch { return null; } };
+    const game = await within(sub(S.romfs), 8000);
+    const base = S.baseRomfs && S.baseRomfs !== S.romfs ? await within(sub(S.baseRomfs), 4000) : null;
     let mod = null;
     const mods = S.modsDir;
-    if (mods && window.showDirectoryPicker) try { if (await mods.queryPermission({ mode: 'readwrite' }) === 'granted') mod = await sub(await (await mods.getDirectoryHandle(P.mod)).getDirectoryHandle('romfs')); } catch {}
-    return { game: await sub(S.romfs), base: S.baseRomfs ? await sub(S.baseRomfs) : null, mod };
+    if (mods && window.showDirectoryPicker) mod = await within((async () => {
+      if (await mods.queryPermission({ mode: 'readwrite' }) !== 'granted') return null;
+      return sub(await (await mods.getDirectoryHandle(P.mod)).getDirectoryHandle('romfs'));
+    })(), 4000);
+    return { game, base, mod };
   }
   const readIn = async (dir, name) => { if (!dir) return null; try { return new Uint8Array(await (await (await dir.getFileHandle(name)).getFile()).arrayBuffer()); } catch { return null; } };
-  const readGame = async name => (await readIn(T.dirs.game, name)) || (await readIn(T.dirs.base, name));
+  // without the folder handle, the editor's usual file reading (slower, but it always works)
+  const readGame = async name => (await readIn(T.dirs.game, name)) || (await readIn(T.dirs.base, name)) || (!T.dirs.game ? await readAt(S.romfs, 'TerrainArc/Game03_Proc/' + name) : null);
   // read one area's material file (from your mod first, if it has one), heights only for the areas the view is drawn from
   async function readArea(a, withHeights) {
     let file = await readIn(T.dirs.mod, a.name + '.mate'), own = !!file, origImg = null;
@@ -124,7 +132,6 @@ export function setupTerrainEditor(D) {
     if (T.ops.length && !confirm('Load a new area? What you painted and haven\'t saved will be lost.')) return;
     if (!await step('Reading the world\'s ground list (Game03_Proc.tscb)…', ensureTscb())) { status('This RomFS has no TerrainArc/Game03_Proc.tscb: open the update\'s romfs (and the base game\'s romfs too, if you have it).', true); return; }
     T.dirs = await step('Finding the ground folder…', dirsOf());
-    if (!T.dirs.game && !T.dirs.base) { status('This RomFS has no TerrainArc/Game03_Proc folder: open the update\'s romfs.', true); return; }
     const x0 = WMIN + r[0] * CELL, z0 = WMIN + r[1] * CELL, x1 = WMIN + (r[2] + 1) * CELL, z1 = WMIN + (r[3] + 1) * CELL, L = DET().L;
     // the view's own level (and, for High, level 6 where level 7 has no file)
     const want = areasIn(T.tscb, x0, z0, x1, z1).filter(a => a.level === L || (L === 7 && a.level === 6));
