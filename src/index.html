@@ -108,12 +108,12 @@ dialog::backdrop { background:#000a; }
 #tp_main { flex:1; display:flex; flex-direction:column; min-width:0; } #tp_cv { flex:1; width:100%; min-height:0; display:block; cursor:crosshair; outline:none; } #tp_read { padding:4px 8px; font-size:12px; color:var(--dim); border-top:1px solid var(--line); min-height:18px; }
 #tpdlg .tpsec { font-weight:700; margin-top:6px; color:var(--dim); text-transform:uppercase; font-size:11px; letter-spacing:.04em; } #tpdlg .tptools { display:flex; gap:4px; } #tpdlg .tptools button { flex:1; } #tpdlg button.on { background:var(--acc2); border-color:var(--acc2); color:#fff; }
 #tpdlg .tpsl { display:grid; grid-template-columns:62px 1fr 44px; gap:6px; align-items:center; } .tpsw { display:inline-block; width:14px; height:14px; border-radius:3px; border:1px solid #0006; vertical-align:middle; margin-right:4px; }
-#tpdlg.coll .tplook, #tpdlg:not(.coll) .tpcoll { display:none !important; } #tp_pal { flex:1; min-height:160px; overflow-y:auto; border:1px solid var(--line); border-radius:6px; } .tpsw2 { display:inline-flex; gap:2px; align-items:center; } .tpthumb { width:14px; height:14px; border-radius:3px; image-rendering:auto; } .tprow { display:grid; grid-template-columns:36px 24px 1fr auto; gap:4px; align-items:center; padding:2px 6px; cursor:pointer; } .tprow:hover { background:#ffffff10; } .tprow.on { background:#3d7bfd33; } .tprow .cnt { color:var(--dim); font-size:11px; } #tp_cur { padding:4px 0; }
+#tpdlg.coll .tplook, #tpdlg:not(.coll) .tpcoll { display:none !important; } .tpcgrid { display:flex; flex-wrap:wrap; gap:3px; margin:2px 0 6px; } .tpcsw { width:20px; height:20px; border-radius:4px; border:1px solid #0008; cursor:pointer; } .tpcsw.on { outline:2px solid #fff; outline-offset:1px; } .tpclabel { font-size:11px; color:var(--dim); display:flex; justify-content:space-between; align-items:center; margin-top:2px; } .tpcadd { font-size:11px; padding:1px 6px; } #tp_pal { flex:1; min-height:160px; overflow-y:auto; border:1px solid var(--line); border-radius:6px; } .tpsw2 { display:inline-flex; gap:2px; align-items:center; } .tpthumb { width:14px; height:14px; border-radius:3px; image-rendering:auto; } .tprow { display:grid; grid-template-columns:36px 24px 1fr auto; gap:4px; align-items:center; padding:2px 6px; cursor:pointer; } .tprow:hover { background:#ffffff10; } .tprow.on { background:#3d7bfd33; } .tprow .cnt { color:var(--dim); font-size:11px; } #tp_cur { padding:4px 0; }
 </style>
 </head>
 <body>
 <div id="top">
-  <div class="brand" title="Version 1.8 test 14: Terrain editor can paint the ground's colour too">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.8 test 14</span></div>
+  <div class="brand" title="Version 1.8 test 15: Terrain editor has a colour list (colours used here, and your saved colours)">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.8 test 15</span></div>
   <div class="menu" id="filemenu"><button id="filebtn" title="Open your dump, open a course file, save your edits as a mod">File ▾</button>
     <div class="menupop">
       <button id="openRomfs" title="The game's romfs folder from your dump">Open RomFS…</button><button id="openBase" title="Optional: the base game's romfs (version 1.0). An update's romfs only has the files that changed, so objects whose models never changed (most open-world scenery, like the Toad houses) need the base game's files to show their models.">Base game…</button>
@@ -450,6 +450,8 @@ dialog::backdrop { background:#000a; }
     <div class="tpsl tplook"><span>Soft edge</span><input type="range" id="tp_soft" min="0" max="100" step="5"><span id="tp_softv"></span></div>
     <div class="tpsl tplook" style="grid-template-columns:auto 1fr auto"><label class="qck" title="Painting also paints the colour map (the colour the game tints the ground with), so painted ground keeps the colour it had where you picked it"><input type="checkbox" id="tp_paintcol">Paint the colour too</label><span></span><input type="color" id="tp_colpick" title="The colour to paint (Pick, or clicking a material, sets it from the map)" style="width:42px;height:22px;padding:0;border:none;background:none"></div>
     <div class="qbtns"><button id="tp_undo" title="Ctrl+Z">↶ Undo</button><button id="tp_redo" title="Ctrl+Y">↷ Redo</button></div>
+    <div class="tpsec tplook">Colour</div>
+    <div id="tp_cols" class="tplook"></div>
     <div class="tpsec" id="tp_palhead">Material</div>
     <div id="tp_cur"></div>
     <label class="qck"><input type="checkbox" id="tp_used" checked>Only the ones used here</label>

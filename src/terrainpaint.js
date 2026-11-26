@@ -38,13 +38,14 @@ const SURF = [
 const surfName = (m, s) => SURF.find(x => x[1] === m && x[2] === s)?.[0] || `${MATERIALS[m] ?? m} / ${SUBMATERIALS[s] ?? s}`;
 const surfCol = (m, s) => SURF.find(x => x[1] === m && x[2] === s)?.[3] || [((m * 67 + s * 29) % 200) + 40, ((m * 31 + s * 83) % 200) + 40, ((m * 97 + s * 11) % 200) + 40];
 const FILTER_FF = new Uint8Array(16).fill(255);   // the ground's collision filter (every terrain tile has this one)
-const NAMES_KEY = 'mkwe-terrain-names', PREF_KEY = 'mkwe-terrain-paint';
+const SAVED_KEY = 'mkwe-terrain-colours', NAMES_KEY = 'mkwe-terrain-names', PREF_KEY = 'mkwe-terrain-paint';
 const tick = () => new Promise(r => setTimeout(r));
 
 export function setupTerrainEditor(D) {
   const { $, el, toast, busy, S, readAt, writeAt, walk, permit, zsDecompress, zsStore, parseRstb, rstbGet, rstbSet, writeRstb, manifestFor, modMeta, makeZip, saveFile, FRM, FR_HALF, frLoadMap, idb } = D;
   const pal = Array.from({ length: 256 }, (_, i) => colourOf(i));
   let names = {}; try { names = JSON.parse(localStorage.getItem(NAMES_KEY) || '{}'); } catch {}
+  let saved = []; try { saved = JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); } catch {}
   const matName = i => names[i] || KNOWN[i]?.[0] || `Material ${i}`;
   const P = { paintCol: true, colour: [200, 160, 110], colours: 'game', layer: 'look', surf: [4, 9], det: 2, tool: 'paint', size: 6, strength: 1, soft: 0.5, mat: 1, shade: true, grid: true, mod: 'TerrainPaint' };
   try { const o = JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); if (o.det === undefined && o.detail !== undefined) o.det = o.detail ? 3 : 2; delete o.detail; Object.assign(P, o); } catch {}
@@ -92,6 +93,7 @@ export function setupTerrainEditor(D) {
     return w;
   }
   function fillPalette() {
+    fillColours();
     const box = $('#tp_pal'); box.innerHTML = '';
     if (P.layer === 'coll') {
       const cnt = new Map(); for (const t of T.col.values()) for (const tr of t.tris) if (!tr.dead) { const k = t.mats[tr.mat][0] + ',' + t.mats[tr.mat][1]; cnt.set(k, (cnt.get(k) || 0) + 1); }
@@ -218,6 +220,36 @@ export function setupTerrainEditor(D) {
     const own = T.areas.filter(a => a.own).length;
     toast(`Loaded. Left-drag to paint.${own ? ` Carried on from your mod "${P.mod}" (${own} file(s) already painted there).` : ''}`, 'ok');
   }
+  // the colours the loaded area's colour maps use most, merged when close, each with the material it's mostly on
+  function colourList() {
+    const bins = new Map();
+    for (const m of T.disp.values()) for (const a of m.values()) { if (!a.cm) continue;
+      for (let q = 2; q <= 258; q += 2) for (let p = 2; p <= 258; p += 2) { const k = q * PX + p, o = k * 3, key = ((a.cm[o] >> 3) << 10) | ((a.cm[o + 1] >> 3) << 5) | (a.cm[o + 2] >> 3);
+        let b = bins.get(key); if (!b) bins.set(key, b = { n: 0, r: 0, g: 0, b: 0, mats: new Map() });
+        b.n++; b.r += a.cm[o]; b.g += a.cm[o + 1]; b.b += a.cm[o + 2]; const d = dominant(a.img[k]); b.mats.set(d, (b.mats.get(d) || 0) + 1); } }
+    const all = [...bins.values()].sort((x, y) => y.n - x.n), out = [];
+    for (const b of all) {
+      const c = [b.r / b.n, b.g / b.n, b.b / b.n];
+      const near = out.find(o => Math.hypot(o.c[0] - c[0], o.c[1] - c[1], o.c[2] - c[2]) < 22);
+      if (near) { near.n += b.n; for (const [m, n] of b.mats) near.mats.set(m, (near.mats.get(m) || 0) + n); continue; }
+      if (out.length < 24) out.push({ c, n: b.n, mats: new Map(b.mats) });
+    }
+    return out.map(o => ({ c: o.c.map(Math.round), n: o.n, mat: [...o.mats].sort((x, y) => y[1] - x[1])[0]?.[0] }));
+  }
+  function fillColours() {
+    const box = $('#tp_cols'); if (!box) return; box.innerHTML = '';
+    const set = c => { P.colour = c.slice(); P.paintCol = true; savePrefs(); syncUI(); fillColours(); };
+    const same = c => c.every((v, i) => Math.abs(v - P.colour[i]) < 2);
+    const sw = (c, title, extra = {}) => el('span', { class: 'tpcsw' + (same(c) ? ' on' : ''), title, style: `background:rgb(${c})`, onclick: () => set(c), ...extra });
+    const list = T.colList || [];
+    if (list.length) { box.append(el('div', { class: 'tpclabel' }, 'Used here (most first)'));
+      const g = el('div', { class: 'tpcgrid' }); for (const o of list) g.append(sw(o.c, `rgb(${o.c.join(', ')}): ${Math.round(o.n / list.reduce((t, x) => t + x.n, 0) * 100)}% of the area, mostly on ${o.mat ?? '?'} ${matName(o.mat)}. Click to paint with it.`)); box.append(g); }
+    box.append(el('div', { class: 'tpclabel' }, 'Saved', el('button', { class: 'tpcadd', title: 'Save the current colour to this list (right-click a saved colour to remove it)', onclick: () => { if (!saved.some(c => c.every((v, i) => v === P.colour[i]))) { saved.push(P.colour.slice()); try { localStorage.setItem(SAVED_KEY, JSON.stringify(saved)); } catch {} fillColours(); } } }, '+ Save current')));
+    const g2 = el('div', { class: 'tpcgrid' });
+    saved.forEach((c, i) => g2.append(sw(c, `rgb(${c.join(', ')}). Click to paint with it, right-click to remove it.`, { oncontextmenu: e => { e.preventDefault(); saved.splice(i, 1); try { localStorage.setItem(SAVED_KEY, JSON.stringify(saved)); } catch {} fillColours(); } })));
+    if (!saved.length) g2.append(el('span', { class: 'hint' }, 'None yet: Pick a colour (or choose one in the colour box), then + Save current.'));
+    box.append(g2);
+  }
   function countMats() {
     const c = new Uint32Array(256), g = new Float64Array(256 * 3), rc = new Float64Array(256 * 3), gn = new Uint32Array(256), [x0, z0, x1, z1] = T.box;
     for (const m of T.disp.values()) for (const a of m.values()) {
@@ -226,7 +258,7 @@ export function setupTerrainEditor(D) {
         for (let p = 2; p <= 258; p++) { const x = a.x + (p - 1.5) * ps; if (x < x0 || x > x1 || areaAt(x, z) !== a) continue; const k = q * PX + p, d = dominant(a.img[k]); c[d]++;
           if (a.cm) { const o = k * 3; rc[d * 3] += a.cm[o]; rc[d * 3 + 1] += a.cm[o + 1]; rc[d * 3 + 2] += a.cm[o + 2]; }
           if (a.cm && T.mc) { const o = k * 3; g[d * 3] += a.cm[o] * T.mc[d * 3]; g[d * 3 + 1] += a.cm[o + 1] * T.mc[d * 3 + 1]; g[d * 3 + 2] += a.cm[o + 2] * T.mc[d * 3 + 2]; gn[d]++; } } } }
-    T.rawCol = Array.from({ length: 256 }, (_, i) => gn[i] ? [0, 1, 2].map(j => Math.round(rc[i * 3 + j] / gn[i])) : null); T.counts = c; T.gameCol = Array.from({ length: 256 }, (_, i) => gn[i] ? [0, 1, 2].map(j => Math.round(Math.min(255, g[i * 3 + j] / gn[i] * GAIN))) : null);
+    T.colList = colourList(); T.rawCol = Array.from({ length: 256 }, (_, i) => gn[i] ? [0, 1, 2].map(j => Math.round(rc[i * 3 + j] / gn[i])) : null); T.counts = c; T.gameCol = Array.from({ length: 256 }, (_, i) => gn[i] ? [0, 1, 2].map(j => Math.round(Math.min(255, g[i * 3 + j] / gn[i] * GAIN))) : null);
   }
 
   // ------------------------------------------------------------ the picture
@@ -615,7 +647,7 @@ export function setupTerrainEditor(D) {
     P.det = DETAILS.length - 1; savePrefs(); T.picking = true; T.zoomPick = true; syncUI(); draw(); toast(`Drag a box round the part to work on (up to ${km()} × ${km()} km). It loads at high detail, and only that part gets painted.`); };
   $('#tp_colours').onchange = () => { P.colours = $('#tp_colours').value; savePrefs(); if (T.img) renderAll(); fillPalette(); syncUI(); draw(); };
   $('#tp_paintcol').onchange = () => { P.paintCol = $('#tp_paintcol').checked; savePrefs(); };
-  $('#tp_colpick').oninput = () => { const v = $('#tp_colpick').value; P.colour = [1, 3, 5].map(i => parseInt(v.slice(i, i + 2), 16)); P.paintCol = true; savePrefs(); syncUI(); };
+  $('#tp_colpick').oninput = () => { const v = $('#tp_colpick').value; P.colour = [1, 3, 5].map(i => parseInt(v.slice(i, i + 2), 16)); P.paintCol = true; savePrefs(); syncUI(); fillColours(); };
   $('#tp_grid').onchange = () => { P.grid = $('#tp_grid').checked; savePrefs(); draw(); };
   $('#tp_used').onchange = fillPalette;
   $('#tp_undo').onclick = () => applyHist(T.undo, T.redo, 'before');
