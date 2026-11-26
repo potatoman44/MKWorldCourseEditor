@@ -578,7 +578,7 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
       : g(`Gyml/PreloadCourseGParam/${CA}.game__PreloadCourseGParam.bgyml`));
     add.set(`Gyml/MiniMapCourseGParam/MiniMap_${v.CV}.game__MiniMapCourseGParam.bgyml`, v.mm && v.mm.cam ? edit(g(mmKey), r => { r.CamPos.X = v.mm.cam.x; r.CamPos.Z = v.mm.cam.z; r.CamRot.Y = v.mm.cam.yaw; r.CamSizeX = v.mm.cam.size; }) : g(mmKey));
   }
-  add.set(`Gyml/CourseAreaGParam/${SZ}.game__CourseAreaGParam.bgyml`, edit(g(`Gyml/CourseAreaGParam/${SA}.game__CourseAreaGParam.bgyml`), r => { r.NormalCourse = [T.u32(hCZ)]; if (spec.stageType) r.StageType = spec.stageType;
+  add.set(`Gyml/CourseAreaGParam/${SZ}.game__CourseAreaGParam.bgyml`, edit(g(`Gyml/CourseAreaGParam/${SA}.game__CourseAreaGParam.bgyml`), r => { r.NormalCourse = [T.u32(hCZ)]; if (spec.stageType) r.StageType = spec.stageType; if (spec.vsExtra) r.StageType = 'Underground';
     // the extra routes, as the lap types the game offers for a course (1.8's way of adding Crown City-style variants)
     if (variants.length) r.AdditionalCourseAttachments = variants.map(v => ({ NormalCourse: T.u32(mmh3(v.CV)), Weight: T.i32(75) }));
     if (spec.pictures?.badge) r.UIStageIcon = 'Sign_CTrkNew'; if (spec.pictures?.map) r.UIGrandprixStageIcon = 'LSign_TestTrk'; }));
