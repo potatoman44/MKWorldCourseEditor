@@ -71,25 +71,28 @@ export function setupTerrainEditor(D) {
     if (!await ensureTscb()) return;
     const [i0, j0, i1, j1] = T.region, x0 = WMIN + i0 * CELL, z0 = WMIN + j0 * CELL, x1 = WMIN + (i1 + 1) * CELL, z1 = WMIN + (j1 + 1) * CELL;
     const list = areasIn(T.tscb, x0, z0, x1, z1), mine = await modRomfs(false);
-    T.areas = []; T.l6.clear(); T.l7.clear(); T.undo = []; T.redo = []; let fromMod = 0;
+    T.areas = []; T.l6.clear(); T.l7.clear(); T.undo = []; T.redo = []; let fromMod = 0, missing = 0;
     try {
       for (let n = 0; n < list.length; n++) {
         const a = list[n]; if (n % 6 === 0) { busy(`Reading the ground… ${n} of ${list.length}`); await new Promise(r => setTimeout(r)); }
-        let file = mine && await readAt(mine, matePath(a.name)); if (file) fromMod++; else file = await readAt(S.romfs, matePath(a.name));
-        if (!file) continue;
-        const m = readMate(file), area = { ...a, file, m, img: m.img, orig: (await readOrig(a.name, file)) || m.img.slice(), dirty: false };
+        let file = mine && await readAt(mine, matePath(a.name)), own = !!file; if (own) fromMod++; else file = await readAt(S.romfs, matePath(a.name));
+        if (!file) { missing++; continue; }
+        const m = readMate(file), area = { ...a, file, m, img: m.img, orig: (own && await readOrig(a.name, file)) || m.img.slice(), dirty: false };
         if (a.level >= 6) { try { area.h = readHeights(await readAt(S.romfs, hghtPath(a.name))); } catch { area.h = null; }
-          (a.level === 6 ? T.l6 : T.l7).set(Math.round((a.x - WMIN) / a.size) + ',' + Math.round((a.z - WMIN) / a.size), area); }
+          (a.level === 6 ? T.l6 : T.l7).set(Math.round((a.x - WMIN) / a.size) * 4096 + Math.round((a.z - WMIN) / a.size), area); }
         T.areas.push(area);
       }
     } catch (e) { console.error(e); toast('Couldn\'t read the ground: ' + e.message, 'err'); }
     busy();
+    if (!T.l6.size) { toast(`Couldn't read this area's ground files (TerrainArc/Game03_Proc/…mate)${missing ? `: ${missing} missing` : ''}. Open the update's romfs (with the base game's romfs too if you have it).`, 'err'); syncUI(); return; }
+    busy('Drawing the map…'); await new Promise(r => setTimeout(r));
     T.picking = false; T.zoomPick = false; T.res = P.detail ? 514 : 257; T.box = [x0, z0, x1, z1];
     for (const a of [...T.l6.values(), ...T.l7.values()]) shadeOf(a);
     const W = (i1 - i0 + 1) * T.res, H = (j1 - j0 + 1) * T.res, c = document.createElement('canvas'); c.width = W; c.height = H;
     T.img = c; T.ctx = c.getContext('2d'); T.id = T.ctx.createImageData(W, H);
     T.view.cx = (x0 + x1) / 2; T.view.cz = (z0 + z1) / 2; fit(); T.view.k = Math.min(cv.width / (x1 - x0), cv.height / (z1 - z0)) * 0.95;
-    renderAll(); countMats(); fillPalette(); syncUI(); draw();
+    renderAll(); countMats(); busy(); fillPalette(); syncUI(); draw();
+    toast(`Loaded ${T.areas.length} terrain files. Left-drag to paint.`, 'ok');
     if (fromMod) toast(`Carried on from your mod "${P.mod}": ${fromMod} file(s) already painted there.`, 'ok');
   }
   // the game's own version (for "Restore"), when the file came from the mod
@@ -113,8 +116,8 @@ export function setupTerrainEditor(D) {
   }
   // the most detailed area shown at a world spot
   function areaAt(x, z) {
-    if (T.res > 257) { const a = T.l7.get(Math.floor((x - WMIN) / 125) + ',' + Math.floor((z - WMIN) / 125)); if (a) return a; }
-    return T.l6.get(Math.floor((x - WMIN) / CELL) + ',' + Math.floor((z - WMIN) / CELL));
+    if (T.res > 257) { const a = T.l7.get(Math.floor((x - WMIN) / 125) * 4096 + Math.floor((z - WMIN) / 125)); if (a) return a; }
+    return T.l6.get(Math.floor((x - WMIN) / CELL) * 4096 + Math.floor((z - WMIN) / CELL));
   }
   const texel = (a, k, out, wgt) => { const v = a.img[k], A = v & 255, B = (v >>> 8) & 255, t = ((v >>> 16) & 255) / 255, ca = pal[A], cb = pal[B], s = (P.shade ? a.sh[k] : 1) * wgt;
     out[0] += (ca[0] + (cb[0] - ca[0]) * t) * s; out[1] += (ca[1] + (cb[1] - ca[1]) * t) * s; out[2] += (ca[2] + (cb[2] - ca[2]) * t) * s; };

@@ -9,7 +9,7 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.12';
+const EDITOR_VER = 'v1.13';
 import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas } from './newslot.js';
 import { parseSarc as parseSarcM } from './sarc.js';
 import { generate, toWorld, applySections, DEFAULTS as TC_DEFAULTS, DEFAULT_POINTS, LOCK_AFTER, LOCK_BEFORE, SURF } from './trackgen.js';
@@ -29,8 +29,10 @@ THREE.Mesh.prototype.raycast = acceleratedRaycast;
 // ---------------------------------------------------------------- helpers
 const $ = s => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (k === 'class') e.className = v; else e.setAttribute(k, v); } for (const k of kids) e.append(k); return e; };
-const toast = (msg, kind = '', ms) => { const t = el('div', { class: 'toast ' + kind }, msg); $('#toasts').append(t); setTimeout(() => t.remove(), ms || (kind === 'err' ? 9000 : 4500)); };
-const busy = (msg) => { $('#busy').textContent = msg || ''; $('#busy').style.display = msg ? 'block' : 'none'; };
+// messages and the busy note go in the open dialog when there is one (a modal dialog hides everything behind it)
+const onTop = () => { const d = [...document.querySelectorAll('dialog[open]')].pop() || document.body, t = $('#toasts'), b = $('#busy'); if (t.parentNode !== d) d.append(t, b); };
+const toast = (msg, kind = '', ms) => { onTop(); const t = el('div', { class: 'toast ' + kind }, msg); $('#toasts').append(t); setTimeout(() => t.remove(), ms || (kind === 'err' ? 9000 : 4500)); };
+const busy = (msg) => { onTop(); $('#busy').textContent = msg || ''; $('#busy').style.display = msg ? 'block' : 'none'; };
 const hashKey = v => v instanceof Typed ? String(v.v) : String(v);
 const rand64 = () => { const a = new Uint32Array(2); crypto.getRandomValues(a); return BigInt.asUintN(64, (BigInt(a[0]) << 32n) | BigInt(a[1])); };
 const rand32 = () => crypto.getRandomValues(new Uint32Array(1))[0];
