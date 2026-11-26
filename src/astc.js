@@ -448,3 +448,14 @@ export function bntxToRGBA(d, maxSize = 256) {
   for (let y = 0; y < by; y++) for (let x = 0; x < bx; x++) decodeBlock(lin.subarray((y * bx + x) * 16, (y * bx + x) * 16 + 16), bw, bh, out, w, h, x * bw, y * bh);
   return { w, h, rgba: out, fullW: info.width, fullH: info.height };
 }
+// one layer of an array texture (layers are stored one after another, each with its full mip chain)
+export function bntxLayerRGBA(d, layer, maxSize = 64) {
+  const dv = new DataView(d.buffer, d.byteOffset, d.byteLength), off = o => Number(dv.getBigUint64(o, true)), p = off(off(0x28));
+  const info = bntxInfo(d), layers = Math.max(1, dv.getUint32(p + 0x30, true)), [bw, bh] = bntxFoot(info), layerSize = info.dataSize / layers;
+  let l = 0; while (l + 1 < info.mips && Math.max(info.width >> l, info.height >> l) > maxSize) l++;
+  const w = Math.max(1, info.width >> l), h = Math.max(1, info.height >> l), bx = Math.ceil(w / bw), by = Math.ceil(h / bh);
+  const start = info.mipOffsets[l] + layer * layerSize, end = (l + 1 < info.mips ? info.mipOffsets[l + 1] : info.mipOffsets[0] + layerSize) + layer * layerSize;
+  const lin = untile(d.subarray(start, end), bx * 16, by, info.blockHeightLog2, info.orin), out = new Uint8Array(w * h * 4);
+  for (let y = 0; y < by; y++) for (let x = 0; x < bx; x++) decodeBlock(lin.subarray((y * bx + x) * 16, (y * bx + x) * 16 + 16), bw, bh, out, w, h, x * bw, y * bh);
+  return { w, h, rgba: out, layers };
+}

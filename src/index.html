@@ -108,12 +108,12 @@ dialog::backdrop { background:#000a; }
 #tp_main { flex:1; display:flex; flex-direction:column; min-width:0; } #tp_cv { flex:1; width:100%; min-height:0; display:block; cursor:crosshair; outline:none; } #tp_read { padding:4px 8px; font-size:12px; color:var(--dim); border-top:1px solid var(--line); min-height:18px; }
 #tpdlg .tpsec { font-weight:700; margin-top:6px; color:var(--dim); text-transform:uppercase; font-size:11px; letter-spacing:.04em; } #tpdlg .tptools { display:flex; gap:4px; } #tpdlg .tptools button { flex:1; } #tpdlg button.on { background:var(--acc2); border-color:var(--acc2); color:#fff; }
 #tpdlg .tpsl { display:grid; grid-template-columns:62px 1fr 44px; gap:6px; align-items:center; } .tpsw { display:inline-block; width:14px; height:14px; border-radius:3px; border:1px solid #0006; vertical-align:middle; margin-right:4px; }
-#tpdlg.coll .tplook, #tpdlg:not(.coll) .tpcoll { display:none !important; } #tp_pal { flex:1; min-height:160px; overflow-y:auto; border:1px solid var(--line); border-radius:6px; } .tprow { display:grid; grid-template-columns:20px 24px 1fr auto; gap:4px; align-items:center; padding:2px 6px; cursor:pointer; } .tprow:hover { background:#ffffff10; } .tprow.on { background:#3d7bfd33; } .tprow .cnt { color:var(--dim); font-size:11px; } #tp_cur { padding:4px 0; }
+#tpdlg.coll .tplook, #tpdlg:not(.coll) .tpcoll { display:none !important; } #tp_pal { flex:1; min-height:160px; overflow-y:auto; border:1px solid var(--line); border-radius:6px; } .tpsw2 { display:inline-flex; gap:2px; align-items:center; } .tpthumb { width:14px; height:14px; border-radius:3px; image-rendering:auto; } .tprow { display:grid; grid-template-columns:36px 24px 1fr auto; gap:4px; align-items:center; padding:2px 6px; cursor:pointer; } .tprow:hover { background:#ffffff10; } .tprow.on { background:#3d7bfd33; } .tprow .cnt { color:var(--dim); font-size:11px; } #tp_cur { padding:4px 0; }
 </style>
 </head>
 <body>
 <div id="top">
-  <div class="brand" title="Version 1.18: Terrain editor can paint the ground's collision (road, offroad, sand, ice…)">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.18</span></div>
+  <div class="brand" title="Version 1.19: Terrain editor shows the ground in its game colours">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.19</span></div>
   <div class="menu" id="filemenu"><button id="filebtn" title="Open your dump, open a course file, save your edits as a mod">File ▾</button>
     <div class="menupop">
       <button id="openRomfs" title="The game's romfs folder from your dump">Open RomFS…</button><button id="openBase" title="Optional: the base game's romfs (version 1.0). An update's romfs only has the files that changed, so objects whose models never changed (most open-world scenery, like the Toad houses) need the base game's files to show their models.">Base game…</button>
@@ -454,8 +454,9 @@ dialog::backdrop { background:#000a; }
     <label class="qck"><input type="checkbox" id="tp_used" checked>Only the ones used here</label>
     <div id="tp_pal"></div>
     <div class="hint tpcoll">What the ground is in game. Road drives fast; offroad slows you down (light, normal or heavy); the second word is the sound and dust. The game's own dirt paths (like the ones by Mario Bros. Circuit) are Road – dirt. Collision has no soft edge: each piece of ground is one type, and the brush splits big pieces so your edges stay close to the brush.</div>
-    <div class="hint tplook">The colours only tell the materials apart (in game they're tinted by other maps), and the names are best guesses. Numbers on the right: how much of the area uses each. Double-click one to name it.</div>
+    <div class="hint tplook">Each material shows its colour in game here and its texture. In game, the ground's colour mostly comes from the area's colour map, which painting doesn't change: a material keeps the local tint (dirt painted in Shy Guy Bazaar comes out orange-ish). The names are best guesses. Numbers on the right: how much of the area uses each. Double-click one to name it.</div>
     <div class="tpsec">View</div>
+    <div class="tpsl" style="grid-template-columns:62px 1fr"><span>Colours</span><select id="tp_colours" title="Game colours: like in game (the area's colour map times each material's texture colour). Material colours: a different made-up colour for each material, to tell them apart."><option value="game">Game colours</option><option value="ids">Material colours (to tell them apart)</option></select></div>
     <label class="qck"><input type="checkbox" id="tp_shade">Hill shading</label><label class="qck"><input type="checkbox" id="tp_grid">250 m grid</label>
     <div class="tpsec">Save</div>
     <div class="tgrid" style="display:grid;grid-template-columns:70px 1fr;gap:6px;align-items:center"><span>Mod name</span><input id="tp_mod" type="text"></div>

@@ -96,3 +96,26 @@ export function paintPixel(v, M, w) {
   return (s | (t << 16) | (B << 8) | A) >>> 0;
 }
 export const dominant = v => (((v >>> 16) & 255) < 128 ? v & 255 : (v >>> 8) & 255);
+
+// <name>.color_mul2.extm: the ground's colour map (the colour the game multiplies the material textures by), 260 x 260, BC3
+// (only the colour half is used: the alpha half is a flat 127). Same 0x14-byte header and zstd; 4 x 4-pixel blocks stored like the
+// other maps (block height 1), 65 x 65 blocks padded to 68 x 72.
+let blockMap = null;
+export function readColour(file) {
+  const dec = unpack(file), gx = 17, rows = 72, n = gx * 4 * rows, off = dec.length - n * 16, out = new Uint8Array(PX * PX * 3);
+  if (!blockMap) { blockMap = new Int32Array(n);
+    for (let i = 0; i < n; i++) { const gob = i >> 5, c = i & 31, b = {}; ORDER.forEach((nm, k) => b[nm] = (c >> k) & 1);
+      const y = ((gob / gx) | 0) * 8 + b.y0 + 2 * b.y1 + 4 * b.y2, x = (gob % gx) * 4 + b.x8 + 2 * b.x16; blockMap[i] = x < 65 && y < 65 ? y * 65 + x : -1; } }
+  const pal = new Float32Array(12);
+  for (let i = 0; i < n; i++) { const bi = blockMap[i]; if (bi < 0) continue;
+    const o = off + i * 16 + 8, c0 = dec[o] | (dec[o + 1] << 8), c1 = dec[o + 2] | (dec[o + 3] << 8), bits = (dec[o + 4] | (dec[o + 5] << 8) | (dec[o + 6] << 16) | (dec[o + 7] << 24)) >>> 0;
+    const rgb = (c, k) => { pal[k] = ((c >> 11) & 31) * 255 / 31; pal[k + 1] = ((c >> 5) & 63) * 255 / 63; pal[k + 2] = (c & 31) * 255 / 31; };
+    rgb(c0, 0); rgb(c1, 3);
+    for (let k = 0; k < 3; k++) { if (c0 > c1) { pal[6 + k] = (2 * pal[k] + pal[3 + k]) / 3; pal[9 + k] = (pal[k] + 2 * pal[3 + k]) / 3; } else { pal[6 + k] = (pal[k] + pal[3 + k]) / 2; pal[9 + k] = 0; } }
+    const bx = (bi % 65) * 4, by = ((bi / 65) | 0) * 4;
+    for (let q = 0; q < 16; q++) { const x = bx + (q & 3), y = by + (q >> 2); if (x >= PX || y >= PX) continue; const s = ((bits >>> (2 * q)) & 3) * 3, d = (y * PX + x) * 3; out[d] = pal[s]; out[d + 1] = pal[s + 1]; out[d + 2] = pal[s + 2]; }
+  }
+  return out;
+}
+export const colourPath = n => `TerrainArc/Game03_Proc/${n}.color_mul2.extm`;
+export const ALBEDO_PATH = 'Tex/CmnTex_Tera_Product_Proc_Alb.bntx.zs';
