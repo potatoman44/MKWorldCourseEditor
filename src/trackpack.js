@@ -11,7 +11,7 @@ const typed = (src, v) => (src && typeof src === 'object') ? Object.assign(Objec
 
 export function setupTrackPack(D) {
   const { $, el, toast, busy, S, writeAt, walk, permit, zsDecompress, zsStore, parseRstb, rstbGet, rstbSet, writeRstb, manifestFor, idb,
-    romReader, gameVersion, parseByml, writeByml, parseSarc, sarcAdd, mmh3, msbtAppend, parseMsbt, renameBntx, buildNewSlot, TCAPI } = D;
+    romReader, gameVersion, parseByml, writeByml, parseSarc, sarcAdd, mmh3, msbtAppend, parseMsbt, renameBntx, buildNewSlot, TCAPI, makeZip, pickSave, writeSave } = D;
   const PK = { tracks: [], oneFolder: false };
   const dlg = $('#pkdlg');
 
@@ -43,12 +43,25 @@ export function setupTrackPack(D) {
   // every file of a folder, by its path inside it
   async function readFolder(dir) { const m = new Map(); for (const [p, h] of await walk(dir)) m.set(p, new Uint8Array(await (await h.getFile()).arrayBuffer())); return m; }
 
-  async function build() {
+  // progress bar: the tracks take most of the time (each: open, read, then the slot's own steps), then the menu and writing
+  const STEPS = [[/^Reading the game/, .05], [/^Writing the track model/, .15], [/^Writing textures… (\d+) of (\d+)/, null], [/^Writing the course/, .6], [/^Adding the new stage/, .65],
+    [/minimap/, .75], [/^Making World 2/, .8], [/^Updating the game/, .88], [/^Setting the music/, .93], [/Free Roam/, .96]];
+  function slotFrac(m, last) {
+    for (const [re, f] of STEPS) { const x = re.exec(m); if (x) return f ?? (.2 + .35 * (+x[1] / Math.max(1, +x[2]))); }
+    return last;
+  }
+  const prog = (f, txt) => { $('#pk_progwrap').style.display = ''; $('#pk_prog').value = Math.max(0, Math.min(1, f)); if (txt) $('#pk_progtxt').textContent = `${Math.round(f * 100)}% · ${txt}`; busy(txt); };
+
+  async function build(asZip) {
+    if (PK.building) return;
     if (!S.romfs || S.romfs.fake) return toast('Open your RomFS first (File ▸ Open RomFS…).', 'err');
     if (!PK.tracks.length) return toast('Add some track projects first.', 'err');
     if (PK.tracks.length > 99) return toast('Up to 99 tracks in one pack.', 'err');
     const packName = ($('#pk_name').value || '').trim().replace(/[^A-Za-z0-9_-]+/g, '') || 'TrackPack'; $('#pk_name').value = packName;
     const menuName = ($('#pk_menu').value || '').trim() || 'TrackList';
+    // the .zip's "Save as" window comes first (the browser only allows it straight after the click)
+    const target = asZip ? await pickSave(packName + '.zip', 'modzip') : null;
+    if (asZip && !target) return;
     let mods = S.modsDir;
     if (!mods || !await permit(mods, 'readwrite')) {
       toast('Pick the recomp\'s "mods" folder (inside mkw-recomp).');
@@ -60,8 +73,9 @@ export function setupTrackPack(D) {
     let menuDir; try { menuDir = await mods.getDirectoryHandle(menuName); } catch { return toast(`There's no "${menuName}" mod in your mods folder: the pack takes the menu's files from the Track list mod (TrackList). Put it in mods, or type its folder's name.`, 'err'); }
     const keep = await TCAPI.projectZip().catch(() => null), wasActive = TCAPI.active();
     const log = [];
+    PK.building = true; $('#pk_build').disabled = $('#pk_zip').disabled = true;
     try {
-      busy('Reading the Track list mod…');
+      prog(0, 'Reading the Track list mod…');
       let menuRomfs; try { menuRomfs = await menuDir.getDirectoryHandle('romfs'); } catch { throw new Error(`the "${menuName}" mod has no romfs folder`); }
       const TL = await readFolder(menuRomfs); TL.delete('manifest.tsv');
       let coursesTxt = ''; try { coursesTxt = new TextDecoder().decode(new Uint8Array(await (await (await menuDir.getFileHandle('courses.txt')).getFile()).arrayBuffer())); } catch { throw new Error(`the "${menuName}" mod has no courses.txt`); }
@@ -73,17 +87,20 @@ export function setupTrackPack(D) {
       for (let i = 0; i < PK.tracks.length; i++) {
         const t = PK.tracks[i], n3 = String(i + 1).padStart(3, '0');
         const slot = { SZ: `Pack${n3}_00`, CZ: `Race_Pack${n3}_A_00`, tag: `P${n3}` };
-        busy(`Track ${i + 1} of ${PK.tracks.length}: opening ${t.name}…`);
+        const N = PK.tracks.length, tp = f => .03 + .82 * (i + f) / N;   // this track's share of the bar
+        prog(tp(0), `Track ${i + 1} of ${N}: opening ${t.name}…`);
         await TCAPI.openProject(t.file, t.bytes);
+        prog(tp(.08), `Track ${i + 1} of ${N} (${t.name}): getting the track ready…`);
         const { spec } = await TCAPI.buildSpec();
         const full = { ...spec, display: t.name || spec.display, slot, cup: null, vsStage: null, vsExtra: false, picturesStandIn: false, freeRoam: null, island: false };
-        const { files, warnings } = await buildNewSlot(rd, full, m => busy(`Track ${i + 1} of ${PK.tracks.length} (${t.name}): ${m}`));
+        let sf = 0;
+        const { files, warnings } = await buildNewSlot(rd, full, m => { sf = slotFrac(m, sf); prog(tp(.15 + .85 * sf), `Track ${i + 1} of ${N} (${t.name}): ${m}`); });
         for (const [p, b] of files) built.set(p, b);
         if (warnings?.length) log.push(`${t.name}: ${warnings.join('; ')}`);
         added.push({ name: t.name, slot, courses: [['Normal', slot.CZ], ...(spec.variants || []).map(v => [v.name || `Route ${v.letter}`, `Race_Pack${n3}_${v.letter}_00`])] });
       }
       // ---- the menu: each course as an entry of the list (the battle course lists the menu is made from), its name and picture
-      busy('Adding the tracks to the menu…');
+      prog(.86, 'Adding the tracks to the menu…');
       const gp = `System/GymlArchive/general_format.Product_${V}.sarc.zs`, G = zsDecompress(await rd(gp)), GS = parseSarc(G), rep = new Map();
       let firstLabel = null;
       const entries = added.flatMap(tr => tr.courses.map(([shown, course], k) => ({ tr, shown, course, k })));
@@ -102,7 +119,9 @@ export function setupTrackPack(D) {
         });
         rep.set(key, writeByml(doc.root, doc.version ?? 7));
       }
+      prog(.87, 'Adding the tracks to the menu: packing the list…');
       const NG = sarcAdd(G, new Map(), rep); built.set(gp, zsStore(NG));
+      prog(.885, 'Adding the names to the menu…');
       const sizes = new Map([[gp.replace(/\.zs$/, ''), NG.length]]);
       for (const reg of ['EUen', 'USen']) {
         const mp = `Mals/${reg}/MsgMain.msarc`, raw = await rd(mp); if (!raw) continue;
@@ -112,6 +131,7 @@ export function setupTrackPack(D) {
         const nb = msbtAppend(M.get(file), items, like); if (!nb) throw new Error('couldn\'t add the names to ' + mp);
         const out = sarcAdd(raw, new Map(), new Map([[file, nb]])); built.set(mp, out); sizes.set(mp, out.length);
       }
+      prog(.895, 'Making the list pictures and the size table…');
       const pics = [];
       for (const tr of added) {
         const src = `C_StageS_${tr.slot.SZ}`, dst = 'C_BattleS_' + tr.slot.SZ.slice(1), sp = `Layout/${src}.Nin_Ounce_NVN2.bntx.zs`;
@@ -127,19 +147,32 @@ export function setupTrackPack(D) {
       let txt = coursesTxt.replace(/\s*$/, '\n');
       if (PK.oneFolder) { txt += `\n[${($('#pk_folder').value || 'Custom tracks').trim()}]\n`; for (const tr of added) tr.courses.forEach(([shown, c], k) => { txt += `${k ? tr.name + ' – ' + shown : tr.name}\t${c}\n`; }); }
       else for (const tr of added) { txt += `\n[${tr.name}]\n`; for (const [shown, c] of tr.courses) txt += `${shown}\t${c}\n`; }
-      // ---- write the mod
-      busy('Writing the pack…');
-      const mod = await mods.getDirectoryHandle(packName, { create: true }), romfs = await mod.getDirectoryHandle('romfs', { create: true });
+      // ---- write the mod (into mods, or as a .zip to download)
       const all = new Map(TL); for (const [p, b] of built) all.set(p, b);
-      let k = 0; for (const [p, b] of all) { await writeAt(romfs, p, b); if (++k % 20 === 0) busy(`Writing the pack… ${k} of ${all.size}`); }
-      await writeAt(romfs, 'manifest.tsv', new TextEncoder().encode(await manifestFor(all, rp)));
-      await writeAt(mod, 'plugin/custom_courses.dll', b64(PLUGIN_DLL_B64));
-      await writeAt(mod, 'courses.txt', new TextEncoder().encode(txt));
-      await writeAt(mod, 'mod.json', new TextEncoder().encode(JSON.stringify({ name: packName, title: `${packName} (track pack: ${added.length} track${added.length > 1 ? 's' : ''} + Track list)`, has_romfs: true, romfs_files: all.size, has_exefs: false, has_plugin: true, producer: 'MK World Course Editor' }, null, 2) + '\n'));
-      toast(`Built "${packName}": ${added.length} track(s), ${entries.length} course(s) added to the Track list. Turn OFF ${menuName} and the tracks' own mods, turn ON ${packName}, then press + on the VS / Time Trials map.`, 'ok', 15000);
+      const enc = s => new TextEncoder().encode(s);
+      const extra = [['romfs/manifest.tsv', enc(await manifestFor(all, rp))], ['plugin/custom_courses.dll', b64(PLUGIN_DLL_B64)], ['courses.txt', enc(txt)],
+        ['mod.json', enc(JSON.stringify({ name: packName, title: `${packName} (track pack: ${added.length} track${added.length > 1 ? 's' : ''} + Track list)`, has_romfs: true, romfs_files: all.size, has_exefs: false, has_plugin: true, producer: 'MK World Course Editor' }, null, 2) + '\n')]];
+      const how = `Turn OFF ${menuName} and the tracks' own mods, turn ON ${packName}, then press + on the VS / Time Trials map.`;
+      if (asZip) {
+        prog(.9, 'Making the .zip…');
+        const ents = [...all].map(([p, b]) => [`${packName}/romfs/${p}`, b]); for (const [p, b] of extra) ents.push([`${packName}/${p}`, b]);
+        const blob = makeZip(ents);
+        prog(.96, `Saving ${packName}.zip (${Math.round(blob.size / 1048576)} MB)…`);
+        const saved = await writeSave(target, blob);
+        prog(1, 'Done.');
+        toast(`Saved ${saved}: ${added.length} track(s), ${entries.length} course(s) in the Track list. Put its "${packName}" folder in the recomp's mods folder. ${how}`, 'ok', 15000);
+      } else {
+        prog(.9, 'Writing the pack…');
+        const mod = await mods.getDirectoryHandle(packName, { create: true }), romfs = await mod.getDirectoryHandle('romfs', { create: true });
+        let k = 0; for (const [p, b] of all) { await writeAt(romfs, p, b); if (++k % 10 === 0) prog(.9 + .09 * k / all.size, `Writing the pack… ${k} of ${all.size}`); }
+        for (const [p, b] of extra) await writeAt(mod, p, b);
+        prog(1, 'Done.');
+        toast(`Built "${packName}": ${added.length} track(s), ${entries.length} course(s) added to the Track list. ${how}`, 'ok', 15000);
+      }
       if (log.length) setTimeout(() => toast('Notes: ' + log.join(' · '), 'err', 12000), 800);
-    } catch (e) { console.error(e); toast('Building the pack failed: ' + e.message, 'err', 12000); }
+    } catch (e) { console.error(e); $('#pk_progtxt').textContent = 'Failed: ' + e.message; toast('Building the pack failed: ' + e.message, 'err', 12000); }
     finally {
+      PK.building = false; $('#pk_build').disabled = $('#pk_zip').disabled = false;
       busy('Putting your own track back…');
       try { if (keep) await TCAPI.openProject('your track.zip', keep); } catch (e) { console.error(e); }
       if (!wasActive) TCAPI.close();
@@ -150,7 +183,8 @@ export function setupTrackPack(D) {
   $('#pk_add').onclick = () => $('#pk_file').click();
   $('#pk_file').onchange = async e => { await addFiles([...e.target.files]); e.target.value = ''; };
   $('#pk_one').onchange = () => { PK.oneFolder = $('#pk_one').checked; $('#pk_folderrow').style.display = PK.oneFolder ? '' : 'none'; };
-  $('#pk_build').onclick = build;
+  $('#pk_build').onclick = () => build(false);
+  $('#pk_zip').onclick = () => build(true);
   $('#pk_close').onclick = () => dlg.close();
   return () => { dlg.showModal(); fill(); };
 }

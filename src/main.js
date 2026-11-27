@@ -9,7 +9,7 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.8 test 17';
+const EDITOR_VER = 'v1.8 test 18';
 import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas, sarcAdd as nsSarcAdd, mmh3 as nsMmh3, msbtAppend, parseMsbt as nsParseMsbt } from './newslot.js';
 import { setupTrackPack } from './trackpack.js';
 import { renameBntx as pkRenameBntx } from './astc.js';
@@ -2976,7 +2976,7 @@ async function trOpen() {
 // ---------------------------------------------------------------- Track pack creator (your tracks + the Track list menu, in one mod)
 {
   const openPack = setupTrackPack({ $, el, toast, busy, S, writeAt, walk, permit, zsDecompress, zsStore, parseRstb, rstbGet, rstbSet, writeRstb, manifestFor, idb,
-    romReader, gameVersion, parseByml, writeByml, parseSarc, sarcAdd: nsSarcAdd, mmh3: nsMmh3, msbtAppend, parseMsbt: nsParseMsbt, renameBntx: pkRenameBntx, buildNewSlot,
+    romReader, gameVersion, parseByml, writeByml, parseSarc, sarcAdd: nsSarcAdd, mmh3: nsMmh3, msbtAppend, parseMsbt: nsParseMsbt, renameBntx: pkRenameBntx, buildNewSlot, makeZip, pickSave, writeSave,
     TCAPI: { unzip: b => unzip(b), projectZip: () => tcProjectZip(), active: () => TC.active, open: () => tcOpen(), close: () => tcClose(), openProject: (n, b) => tcOpenProject(n, b), buildSpec: () => tcBuildSpec() } });
   $('#fm_pack').onclick = () => openPack();
 }
