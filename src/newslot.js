@@ -598,7 +598,9 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
     if (variants.length) r.AdditionalCourseAttachments = variants.map(v => ({ NormalCourse: T.u32(mmh3(v.CV)), Weight: T.i32(75) }));
     if (spec.pictures?.badge) r.UIStageIcon = `Sign_${TAG}New`; if (spec.pictures?.map) r.UIGrandprixStageIcon = `LSign_${SZ7}`; }));
   add.set(`Gyml/StageWarpGParam/${SZ}.game__StageWarpGParam.bgyml`, g(`Gyml/StageWarpGParam/${SA}.game__StageWarpGParam.bgyml`));
-  let k = 'Gyml/UIIDConverterGParam/Stage.game__UIIDConverterGParam.bgyml'; rep.set(k, edit(g(k), r => { r.StrToInt[SZ] = T.i32(30); }));
+  let k = 'Gyml/UIIDConverterGParam/Stage.game__UIIDConverterGParam.bgyml'; // the stage's UI number. 30 (a 31st stage) is past the end of the course menus' 30 stage records, so a track pack
+  // (SL.uiStandIn) borrows the number of the stage it was copied from: its menus then use that stage's record, not a missing one
+  rep.set(k, edit(g(k), r => { r.StrToInt[SZ] = SL.uiStandIn && r.StrToInt[SA] != null ? cloneTyped(r.StrToInt[SA]) : T.i32(30); }));
   k = 'Gyml/Map2DIconDicGParam/StageIllust.game__Map2DIconDicGParam.bgyml';
   rep.set(k, edit(g(k), r => { const walk = o => { if (!o || typeof o !== 'object' || o instanceof Typed) return false;
       if (o[SA] && o[SA].Position) { o[SZ] = cloneTyped(o[SA]); o[SZ].Position = { X: SL.ICON[0], Y: SL.ICON[1] }; delete o[SZ].Type; return true; }

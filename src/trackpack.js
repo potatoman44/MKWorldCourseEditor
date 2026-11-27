@@ -118,7 +118,7 @@ export function setupTrackPack(D) {
       const added = [];   // [{ name, courses: [[shown name, course]] }]
       for (let i = 0; i < PK.tracks.length; i++) {
         const t = PK.tracks[i], n3 = String(i + 1).padStart(3, '0');
-        const slot = { SZ: `Pack${n3}_00`, CZ: `Race_Pack${n3}_A_00`, tag: `P${n3}` };
+        const slot = { SZ: `Pack${n3}_00`, CZ: `Race_Pack${n3}_A_00`, tag: `P${n3}`, uiStandIn: true };
         const N = PK.tracks.length, tp = f => .03 + .82 * (i + f) / N;   // this track's share of the bar
         prog(tp(0), `Track ${i + 1} of ${N}: opening ${t.name}…`);
         await TCAPI.openProject(t.file, t.bytes);
