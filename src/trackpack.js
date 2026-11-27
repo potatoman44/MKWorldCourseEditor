@@ -50,27 +50,30 @@ export function setupTrackPack(D) {
     for (const [re, f] of STEPS) { const x = re.exec(m); if (x) return f ?? (.2 + .35 * (+x[1] / Math.max(1, +x[2]))); }
     return last;
   }
-  const prog = (f, txt) => { $('#pk_progwrap').style.display = ''; $('#pk_prog').value = Math.max(0, Math.min(1, f)); if (txt) $('#pk_progtxt').textContent = `${Math.round(f * 100)}% · ${txt}`; busy(txt); };
+  const prog = (f, txt) => { $('#pk_prog').value = Math.max(0, Math.min(1, f)); if (txt) $('#pk_progtxt').textContent = `${Math.round(f * 100)}% · ${txt}`; busy(txt); };
 
+  const fail = msg => { $('#pk_prog').value = 0; $('#pk_progtxt').textContent = msg; toast(msg, 'err', 10000); };
   async function build(asZip) {
     if (PK.building) return;
-    if (!S.romfs || S.romfs.fake) return toast('Open your RomFS first (File ▸ Open RomFS…).', 'err');
-    if (!PK.tracks.length) return toast('Add some track projects first.', 'err');
-    if (PK.tracks.length > 99) return toast('Up to 99 tracks in one pack.', 'err');
+    $('#pk_prog').value = 0; $('#pk_progtxt').textContent = 'Getting ready…';
+    if (!S.romfs || S.romfs.fake) return fail('Open your RomFS first (File ▸ Open RomFS…).');
+    if (!PK.tracks.length) return fail('Add some track projects first.');
+    if (PK.tracks.length > 99) return fail('Up to 99 tracks in one pack.');
     const packName = ($('#pk_name').value || '').trim().replace(/[^A-Za-z0-9_-]+/g, '') || 'TrackPack'; $('#pk_name').value = packName;
     const menuName = ($('#pk_menu').value || '').trim() || 'TrackList';
     // the .zip's "Save as" window comes first (the browser only allows it straight after the click)
     const target = asZip ? await pickSave(packName + '.zip', 'modzip') : null;
-    if (asZip && !target) return;
+    if (asZip && !target) { $('#pk_progtxt').textContent = 'Not started (no place to save picked).'; return; }
     let mods = S.modsDir;
     if (!mods || !await permit(mods, 'readwrite')) {
       toast('Pick the recomp\'s "mods" folder (inside mkw-recomp).');
-      try { mods = await showDirectoryPicker({ id: 'mods', mode: 'readwrite' }); } catch { return; }
-      if (!await permit(mods, 'readwrite')) return;
+      $('#pk_progtxt').textContent = 'Pick the recomp\'s "mods" folder…';
+      try { mods = await showDirectoryPicker({ id: 'mods', mode: 'readwrite' }); } catch { $('#pk_progtxt').textContent = 'Not started (no mods folder picked).'; return; }
+      if (!await permit(mods, 'readwrite')) return fail('No permission for the mods folder.');
       try { mods = await mods.getDirectoryHandle('mods'); } catch {}
       S.modsDir = mods; idb.set('mods', mods);
     }
-    let menuDir; try { menuDir = await mods.getDirectoryHandle(menuName); } catch { return toast(`There's no "${menuName}" mod in your mods folder: the pack takes the menu's files from the Track list mod (TrackList). Put it in mods, or type its folder's name.`, 'err'); }
+    let menuDir; try { menuDir = await mods.getDirectoryHandle(menuName); } catch { return fail(`There's no "${menuName}" mod in your mods folder: the pack takes the menu's files from the Track list mod (TrackList). Put it in mods, or type its folder's name.`); }
     const keep = await TCAPI.projectZip().catch(() => null), wasActive = TCAPI.active();
     const log = [];
     PK.building = true; $('#pk_build').disabled = $('#pk_zip').disabled = true;
