@@ -9,7 +9,7 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.8 test 21';
+const EDITOR_VER = 'v1.8 test 22';
 import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas, sarcAdd as nsSarcAdd, mmh3 as nsMmh3, msbtAppend, parseMsbt as nsParseMsbt } from './newslot.js';
 import { setupTrackPack } from './trackpack.js';
 import { renameBntx as pkRenameBntx } from './astc.js';

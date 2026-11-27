@@ -197,9 +197,16 @@ export function setupTrackPack(D) {
         prog(.9, 'Writing the pack…');
         const mod = await mods.getDirectoryHandle(packName, { create: true }), romfs = await mod.getDirectoryHandle('romfs', { create: true });
         let k = 0; for (const [p, b] of all) { await writeAt(romfs, p, b); if (++k % 10 === 0) prog(.9 + .09 * k / all.size, `Writing the pack… ${k} of ${all.size}`); }
-        for (const [p, b] of extra) await writeAt(mod, p, b);
-        prog(1, 'Done.');
-        toast(`Built "${packName}": ${added.length} track(s), ${entries.length} course(s) added to the Track list. ${how}`, 'ok', 15000);
+        // the browser won't create .dll files in a folder ("Name is not allowed"), so the plugin comes as a download
+        // when that happens, to be put in the pack's plugin folder by hand
+        let dllNote = '';
+        for (const [p, b] of extra.filter(([p]) => !p.endsWith('.dll'))) await writeAt(mod, p, b);
+        for (const [p, b] of extra.filter(([p]) => p.endsWith('.dll'))) {
+          try { await writeAt(mod, p, b); }
+          catch (e) { console.warn(e); await writeSave({ name: p.split('/').pop() }, b); dllNote = ` The browser won't put .dll files in folders, so custom_courses.dll was downloaded instead: move it into mods\\${packName}\\plugin (or use Download .zip, which has it inside).`; }
+        }
+        prog(1, dllNote ? 'Done, apart from the plugin: see the message.' : 'Done.');
+        toast(`Built "${packName}": ${added.length} track(s), ${entries.length} course(s) added to the Track list. ${how}${dllNote}`, 'ok', 25000);
       }
       if (log.length) setTimeout(() => toast('Notes: ' + log.join(' · '), 'err', 12000), 800);
     } catch (e) { console.error(e); $('#pk_progtxt').textContent = 'Failed: ' + e.message; toast('Building the pack failed: ' + e.message, 'err', 12000); }
