@@ -41,7 +41,7 @@ export function setupTrackPack(D) {
   }
 
   // every file of a folder, by its path inside it
-  async function readFolder(dir) { const m = new Map(); for (const [p, h] of await walk(dir)) m.set(p, new Uint8Array(await (await h.getFile()).arrayBuffer())); return m; }
+  async function readFolder(dir, cb = () => {}) { const m = new Map(), all = await walk(dir); for (const [p, h] of all) { m.set(p, new Uint8Array(await (await h.getFile()).arrayBuffer())); if (m.size % 10 === 0) cb(m.size, all.length); } return m; }
 
   // progress bar: the tracks take most of the time (each: open, read, then the slot's own steps), then the menu and writing
   const STEPS = [[/^Reading the game/, .05], [/^Writing the track model/, .15], [/^Writing textures… (\d+) of (\d+)/, null], [/^Writing the course/, .6], [/^Adding the new stage/, .65],
@@ -53,7 +53,9 @@ export function setupTrackPack(D) {
   const prog = (f, txt) => { $('#pk_prog').value = Math.max(0, Math.min(1, f)); if (txt) $('#pk_progtxt').textContent = `${Math.round(f * 100)}% · ${txt}`; busy(txt); };
 
   const fail = msg => { $('#pk_prog').value = 0; $('#pk_progtxt').textContent = msg; toast(msg, 'err', 10000); };
-  async function build(asZip) {
+  // anything going wrong before the build proper still shows on the bar (it used to stay on "Getting ready…")
+  const build = asZip => buildInner(asZip).catch(e => { console.error(e); fail('Building the pack failed: ' + e.message); });
+  async function buildInner(asZip) {
     if (PK.building) return;
     $('#pk_prog').value = 0; $('#pk_progtxt').textContent = 'Getting ready…';
     if (!S.romfs || S.romfs.fake) return fail('Open your RomFS first (File ▸ Open RomFS…).');
@@ -61,26 +63,37 @@ export function setupTrackPack(D) {
     if (PK.tracks.length > 99) return fail('Up to 99 tracks in one pack.');
     const packName = ($('#pk_name').value || '').trim().replace(/[^A-Za-z0-9_-]+/g, '') || 'TrackPack'; $('#pk_name').value = packName;
     const menuName = ($('#pk_menu').value || '').trim() || 'TrackList';
-    // the .zip's "Save as" window comes first (the browser only allows it straight after the click)
-    const target = asZip ? await pickSave(packName + '.zip', 'modzip') : null;
-    if (asZip && !target) { $('#pk_progtxt').textContent = 'Not started (no place to save picked).'; return; }
-    let mods = S.modsDir;
-    if (!mods || !await permit(mods, 'readwrite')) {
+    // the mods folder first (a .zip only reads from it), then the .zip's "Save as" window. The browser allows one window
+    // or permission prompt per click, so if the mods folder had to be asked for, the .zip is a normal download instead
+    const mode = asZip ? 'read' : 'readwrite';
+    let mods = S.modsDir, ok = false;
+    if (mods) {
+      $('#pk_progtxt').textContent = 'Checking access to your mods folder… (if the browser asks, allow it)';
+      try { ok = await permit(mods, mode); } catch (e) { console.warn(e); ok = false; }
+    }
+    if (!ok) {
       toast('Pick the recomp\'s "mods" folder (inside mkw-recomp).');
       $('#pk_progtxt').textContent = 'Pick the recomp\'s "mods" folder…';
-      try { mods = await showDirectoryPicker({ id: 'mods', mode: 'readwrite' }); } catch { $('#pk_progtxt').textContent = 'Not started (no mods folder picked).'; return; }
-      if (!await permit(mods, 'readwrite')) return fail('No permission for the mods folder.');
+      try { mods = await showDirectoryPicker({ id: 'mods', mode }); } catch { $('#pk_progtxt').textContent = 'Not started (no mods folder picked).'; return; }
+      if (!await permit(mods, mode).catch(() => false)) return fail('No permission for the mods folder.');
       try { mods = await mods.getDirectoryHandle('mods'); } catch {}
       S.modsDir = mods; idb.set('mods', mods);
     }
+    let target = null;
+    if (asZip) {
+      $('#pk_progtxt').textContent = 'Choose where to save the .zip…';
+      target = await pickSave(packName + '.zip', 'modzip').catch(() => ({ name: packName + '.zip' }));
+      if (!target) { $('#pk_progtxt').textContent = 'Not started (no place to save picked).'; return; }
+    }
     let menuDir; try { menuDir = await mods.getDirectoryHandle(menuName); } catch { return fail(`There's no "${menuName}" mod in your mods folder: the pack takes the menu's files from the Track list mod (TrackList). Put it in mods, or type its folder's name.`); }
+    $('#pk_progtxt').textContent = 'Keeping a copy of the track you have open…';
     const keep = await TCAPI.projectZip().catch(() => null), wasActive = TCAPI.active();
     const log = [];
     PK.building = true; $('#pk_build').disabled = $('#pk_zip').disabled = true;
     try {
-      prog(0, 'Reading the Track list mod…');
+      prog(0, 'Reading the Track list mod… (listing its files)');
       let menuRomfs; try { menuRomfs = await menuDir.getDirectoryHandle('romfs'); } catch { throw new Error(`the "${menuName}" mod has no romfs folder`); }
-      const TL = await readFolder(menuRomfs); TL.delete('manifest.tsv');
+      const TL = await readFolder(menuRomfs, (k, n) => prog(.03 * k / n, `Reading the Track list mod… ${k} of ${n} files`)); TL.delete('manifest.tsv');
       let coursesTxt = ''; try { coursesTxt = new TextDecoder().decode(new Uint8Array(await (await (await menuDir.getFileHandle('courses.txt')).getFile()).arrayBuffer())); } catch { throw new Error(`the "${menuName}" mod has no courses.txt`); }
       const built = new Map(), base = romReader();
       const rd = async p => built.has(p) ? built.get(p) : TL.has(p) ? TL.get(p) : base(p);
