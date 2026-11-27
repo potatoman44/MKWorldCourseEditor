@@ -113,7 +113,7 @@ dialog::backdrop { background:#000a; }
 </head>
 <body>
 <div id="top">
-  <div class="brand" title="Version 1.8 test 16: Terrain editor can paint the look and the collision together (Both)">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.8 test 22</span></div>
+  <div class="brand" title="Version 1.8 test 16: Terrain editor can paint the look and the collision together (Both)">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.8 test 23</span></div>
   <div class="menu" id="filemenu"><button id="filebtn" title="Open your dump, open a course file, save your edits as a mod">File ▾</button>
     <div class="menupop">
       <button id="openRomfs" title="The game's romfs folder from your dump">Open RomFS…</button><button id="openBase" title="Optional: the base game's romfs (version 1.0). An update's romfs only has the files that changed, so objects whose models never changed (most open-world scenery, like the Toad houses) need the base game's files to show their models.">Base game…</button>
@@ -435,7 +435,7 @@ dialog::backdrop { background:#000a; }
 </dialog>
 <dialog id="pkdlg" style="width:min(760px,96vw)">
   <div class="ohead"><h3>Track pack</h3><button id="pk_close">✕</button></div>
-  <div class="hint">Your tracks in one mod, each in its own new slot, listed in the Track list menu (press + on the VS / Time Trials map). Add your track projects (.mkwtrack.zip, or the .zip of a mod built with the Track Creator). Each track gets its own folder in the list, with its routes inside.</div>
+  <div class="hint">Your tracks in one mod, each in its own new slot, listed in the Track list menu (it opens instead of the map in VS and Time Trials; its settings can make it open with + on the map instead). Add your track projects (.mkwtrack.zip, or the .zip of a mod built with the Track Creator). Each track gets its own folder in the list, with its routes inside.</div>
   <div class="qbtns" style="margin:8px 0"><button id="pk_add" class="hot">Add track projects…</button><span id="pk_count" class="hint"></span></div>
   <input id="pk_file" type="file" accept=".zip" multiple hidden>
   <div id="pk_list" style="max-height:40vh;overflow-y:auto"></div>

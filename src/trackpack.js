@@ -184,7 +184,7 @@ export function setupTrackPack(D) {
       const enc = s => new TextEncoder().encode(s);
       const extra = [['romfs/manifest.tsv', enc(await manifestFor(all, rp))], ['plugin/custom_courses.dll', b64(PLUGIN_DLL_B64)], ['courses.txt', enc(txt)],
         ['mod.json', enc(JSON.stringify({ name: packName, title: `${packName} (track pack: ${added.length} track${added.length > 1 ? 's' : ''} + Track list)`, has_romfs: true, romfs_files: all.size, has_exefs: false, has_plugin: true, producer: 'MK World Course Editor' }, null, 2) + '\n')]];
-      const how = `Turn OFF ${menuName} and the tracks' own mods, turn ON ${packName}, then press + on the VS / Time Trials map.`;
+      const how = `Turn OFF ${menuName} and the tracks' own mods, turn ON ${packName}, then go to VS or Time Trials: the track list opens instead of the map.`;
       if (asZip) {
         prog(.9, 'Making the .zip…');
         const ents = [...all].map(([p, b]) => [`${packName}/romfs/${p}`, b]); for (const [p, b] of extra) ents.push([`${packName}/${p}`, b]);
