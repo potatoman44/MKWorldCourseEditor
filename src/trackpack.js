@@ -52,6 +52,14 @@ export function setupTrackPack(D) {
   }
   const prog = (f, txt) => { $('#pk_prog').value = Math.max(0, Math.min(1, f)); if (txt) $('#pk_progtxt').textContent = `${Math.round(f * 100)}% · ${txt}`; busy(txt); };
 
+  // a button under the bar for a step that needs its own click (a second picker); resolves with what fn returns
+  function askClick(label, fn) {
+    return new Promise((res, rej) => {
+      const b = el('button', { class: 'hot', style: 'margin-top:6px' }, label);
+      b.onclick = async () => { b.remove(); try { res(await fn()); } catch (e) { rej(e); } };
+      $('#pk_progtxt').after(b);
+    });
+  }
   const fail = msg => { $('#pk_prog').value = 0; $('#pk_progtxt').textContent = msg; toast(msg, 'err', 10000); };
   // anything going wrong before the build proper still shows on the bar (it used to stay on "Getting ready…")
   const build = asZip => buildInner(asZip).catch(e => { console.error(e); fail('Building the pack failed: ' + e.message); });
@@ -63,27 +71,35 @@ export function setupTrackPack(D) {
     if (PK.tracks.length > 99) return fail('Up to 99 tracks in one pack.');
     const packName = ($('#pk_name').value || '').trim().replace(/[^A-Za-z0-9_-]+/g, '') || 'TrackPack'; $('#pk_name').value = packName;
     const menuName = ($('#pk_menu').value || '').trim() || 'TrackList';
-    // the mods folder first (a .zip only reads from it), then the .zip's "Save as" window. The browser allows one window
-    // or permission prompt per click, so if the mods folder had to be asked for, the .zip is a normal download instead
+    // A browser only lets a click open one window (Save as, folder picker). So: the .zip's Save as window first, straight
+    // from the click; then the mods folder (read only for a .zip). If the mods folder has to be picked and the click's turn
+    // is used up, a button for it shows under the bar and the build carries on once it's clicked.
     const mode = asZip ? 'read' : 'readwrite';
-    let mods = S.modsDir, ok = false;
-    if (mods) {
-      $('#pk_progtxt').textContent = 'Checking access to your mods folder… (if the browser asks, allow it)';
-      try { ok = await permit(mods, mode); } catch (e) { console.warn(e); ok = false; }
-    }
-    if (!ok) {
-      toast('Pick the recomp\'s "mods" folder (inside mkw-recomp).');
-      $('#pk_progtxt').textContent = 'Pick the recomp\'s "mods" folder…';
-      try { mods = await showDirectoryPicker({ id: 'mods', mode }); } catch { $('#pk_progtxt').textContent = 'Not started (no mods folder picked).'; return; }
-      if (!await permit(mods, mode).catch(() => false)) return fail('No permission for the mods folder.');
-      try { mods = await mods.getDirectoryHandle('mods'); } catch {}
-      S.modsDir = mods; idb.set('mods', mods);
-    }
     let target = null;
     if (asZip) {
       $('#pk_progtxt').textContent = 'Choose where to save the .zip…';
       target = await pickSave(packName + '.zip', 'modzip').catch(() => ({ name: packName + '.zip' }));
       if (!target) { $('#pk_progtxt').textContent = 'Not started (no place to save picked).'; return; }
+    }
+    // only a quick, silent check of the remembered mods folder: asking the browser for permission can hang in the
+    // editor's window (no prompt appears), so without access it goes to the folder picker instead
+    const quick = (pr, ms) => Promise.race([pr, new Promise(r => setTimeout(() => r(undefined), ms))]);
+    let mods = S.modsDir, ok = false;
+    if (mods) {
+      $('#pk_progtxt').textContent = 'Checking access to your mods folder…';
+      ok = await quick(mods.queryPermission({ mode }).then(r => r === 'granted', () => false), 1500) === true;
+    }
+    if (!ok) {
+      const pickMods = () => showDirectoryPicker({ id: 'mods', mode });
+      $('#pk_progtxt').textContent = 'Pick the recomp\'s "mods" folder (inside mkw-recomp)…';
+      try { mods = asZip && target.h ? await askClick('Choose your mods folder…', pickMods) : await pickMods(); }
+      catch (e) {
+        if (e.name === 'AbortError') { $('#pk_progtxt').textContent = 'Not started (no mods folder picked).'; return; }
+        try { mods = await askClick('Choose your mods folder…', pickMods); }
+        catch (e2) { $('#pk_progtxt').textContent = 'Not started (no mods folder picked).'; return; }
+      }
+      try { mods = await mods.getDirectoryHandle('mods'); } catch {}
+      S.modsDir = mods; idb.set('mods', mods);
     }
     let menuDir; try { menuDir = await mods.getDirectoryHandle(menuName); } catch { return fail(`There's no "${menuName}" mod in your mods folder: the pack takes the menu's files from the Track list mod (TrackList). Put it in mods, or type its folder's name.`); }
     $('#pk_progtxt').textContent = 'Keeping a copy of the track you have open…';
