@@ -9,7 +9,7 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.9 test 1';
+const EDITOR_VER = 'v1.9 test 2';
 import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas, sarcAdd as nsSarcAdd, mmh3 as nsMmh3, msbtAppend, parseMsbt as nsParseMsbt } from './newslot.js';
 import { setupTrackPack } from './trackpack.js';
 import { convertMk8 } from './mk8import.js';
@@ -3739,7 +3739,7 @@ function railGraph(main, closed, alts) {
 const tcBranches = q => (q.branches || []).map(b => ({ b, a: nearestIdx(q.lap, b.from), z: nearestIdx(q.lap, b.to) })).filter(x => x.a >= 0 && x.z > x.a + 1 && x.b.lap.length);
 function tcQCSpec(q) {
   let cp = 0;
-  const lap = q.lap.map(f => ({ pos: f.pos, yaw: f.yaw, ...(f.rot ? { rot: f.rot } : {}), rs: [nodeW(q, f), 20], ro: [0, 10], dyn: f.start ? { IsStart: true } : f.cp ? { CheckPoint: ++cp } : null }));
+  const lap = q.lap.map(f => ({ pos: f.pos, yaw: f.yaw, ...(f.rot ? { rot: f.rot } : {}), rs: [nodeW(q, f), f.h || 20], ro: [0, (f.h || 20) / 2], dyn: f.start ? { IsStart: true } : f.cp ? { CheckPoint: ++cp } : null }));
   { const o = tcOpts(); applySections(lap, o.race, o.sections, q.closed); }
   const brs = tcBranches(q);
   // each alternate route carries the same checkpoint numbers as the stretch of lap path it replaces

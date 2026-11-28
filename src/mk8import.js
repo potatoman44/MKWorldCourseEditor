@@ -182,6 +182,19 @@ export function bntxDecode(t, info, maxSize = 512) {
   return { w, h, rgba: out };
 }
 
+// A long thin texture (MK8 has lots: road strips 5:1, building strips 4:1) is made square by repeating it along its
+// short side, and the model's UVs are shrunk to match. The game only takes square textures, and squashing a strip into a
+// square makes it go blurry a short way ahead (the GPU picks the smaller copies sooner along the stretched direction).
+function squareUp(im) {
+  const { w, h } = im; if (w === h) return { ...im, su: 1, sv: 1 };
+  // k copies along the short side, each squeezed or stretched a little so that they fill the square exactly
+  const L = Math.max(w, h), k = Math.max(1, Math.round(L / Math.min(w, h))), out = new Uint8Array(L * L * 4), wide = w > h;
+  for (let y = 0; y < L; y++) for (let x = 0; x < L; x++) {
+    const sx = wide ? x : Math.min(w - 1, Math.floor(((x * k) % L) * w / L)), sy = wide ? Math.min(h - 1, Math.floor(((y * k) % L) * h / L)) : y;
+    const q = (sy * w + sx) * 4, o = (y * L + x) * 4; out[o] = im.rgba[q]; out[o + 1] = im.rgba[q + 1]; out[o + 2] = im.rgba[q + 2]; out[o + 3] = im.rgba[q + 3];
+  }
+  return { w: L, h: L, rgba: out, su: wide ? 1 : 1 / k, sv: wide ? 1 / k : 1 };
+}
 // ---------------------------------------------------------------- MK8DX course -> Track Creator material
 export const MK8_SCALE = 0.1;   // MK8 units are 10 cm (coins 2.5 m apart, item boxes ~4.5 m, the Stadium's start straight ~37 m wide)
 // KCL type (low 5 bits) and variant (next 3) -> the Track Creator's collision brush. Worked out on Mario Kart Stadium
@@ -191,7 +204,7 @@ export function mk8Surface(attr) {
   if (t <= 3) return 'road_asphalt';
   if (t === 4) return 'ice';
   if (t === 5) return 'sand';
-  if (t === 6) return v === 0 ? 'sand' : 'grass';
+  if (t === 6) return v === 0 ? 'sand' : 'light_offroad';   // sand / the lawn along the road's edges
   if (t === 7 || t === 8) return 'heavy_offroad';
   if (t === 9) return 'ice';
   if (t === 10) return 'boost';
@@ -199,7 +212,7 @@ export function mk8Surface(attr) {
   if (t === 12) return 'glide';
   if (t === 13 || t === 14) return 'road_asphalt';
   if (t === 15) return 'wall_concrete';
-  if (t === 16) return 'rescue';        // ground karts can't reach (roofs, outside the stadium): Lakitu brings them back
+  if (t === 16) return 'grass';         // offroad (the big grass areas; some of it is right next to the road)
   if (t >= 17 && t <= 22) return 'wall_concrete';
   if (t === 23 || t === 24) return 'invisible_wall';
   if (t === 28 || t === 29) return 'fall';
@@ -248,28 +261,29 @@ export function convertMk8(files, opt = {}) {
   // ---- visual model
   const bf = readBfres5(yaz0(files.model)), texList = bf.bntx ? bntxList(bf.bntx) : new Map(), images = [], imgOf = new Map();
   const skip = n => /StaticShadow|Shadow$|_nuki_?shadow/i.test(n);
-  let obj = '# Mario Kart 8 Deluxe course model, converted\nmtllib course.mtl\n', mtl = '', v = 1; const matsUsed = new Set();
+  let obj = '# Mario Kart 8 Deluxe course model, converted\nmtllib course.mtl\n', mtl = '', v = 1; const matsUsed = new Set(), uvScale = new Map();
   for (const s of bf.shapes) {
     const m = bf.mats[s.mat]; if (!m || skip(m.name)) continue;
     if (!matsUsed.has(m.name)) {
       matsUsed.add(m.name); mtl += `newmtl ${m.name}\nKd 1 1 1\n`;
       const ai = m.samplers.indexOf('_a0'), tname = ai >= 0 ? m.textures[ai] : m.textures.find(t => /_Alb/.test(t));
       if (tname && texList.has(tname)) {
-        if (!imgOf.has(tname)) { const im = bntxDecode(bf.bntx, texList.get(tname), opt.texSize || 512); if (im) { images.push({ name: tname + '.png', ...im }); imgOf.set(tname, tname + '.png'); } }
-        if (imgOf.has(tname)) mtl += `map_Kd ${imgOf.get(tname)}\n`;
+        if (!imgOf.has(tname)) { const im = bntxDecode(bf.bntx, texList.get(tname), opt.texSize || 1024); if (im) { const sq = squareUp(im); images.push({ name: tname + '.png', w: sq.w, h: sq.h, rgba: sq.rgba }); imgOf.set(tname, { file: tname + '.png', su: sq.su, sv: sq.sv }); } }
+        if (imgOf.has(tname)) { mtl += `map_Kd ${imgOf.get(tname).file}\n`; uvScale.set(m.name, imgOf.get(tname)); }
       }
     }
     obj += `o ${s.name}\nusemtl ${m.name}\n`;
     const n = s.pos.length / 3;
     for (let i = 0; i < n; i++) { const p = T([s.pos[3 * i], s.pos[3 * i + 1], s.pos[3 * i + 2]]); obj += `v ${p[0].toFixed(3)} ${p[1].toFixed(3)} ${p[2].toFixed(3)}\n`; }
-    for (let i = 0; i < n; i++) obj += s.uv ? `vt ${s.uv[2 * i].toFixed(5)} ${(1 - s.uv[2 * i + 1]).toFixed(5)}\n` : 'vt 0 0\n';
+    const us = uvScale.get(m.name) || { su: 1, sv: 1 };
+    for (let i = 0; i < n; i++) obj += s.uv ? `vt ${(s.uv[2 * i] * us.su).toFixed(5)} ${(1 - s.uv[2 * i + 1] * us.sv).toFixed(5)}\n` : 'vt 0 0\n';
     for (let i = 0; i < n; i++) obj += s.nrm ? `vn ${s.nrm[3 * i].toFixed(4)} ${s.nrm[3 * i + 1].toFixed(4)} ${s.nrm[3 * i + 2].toFixed(4)}\n` : 'vn 0 1 0\n';
     for (let i = 0; i + 2 < s.idx.length; i += 3) { const a = s.idx[i] + v, b = s.idx[i + 1] + v, c = s.idx[i + 2] + v; obj += `f ${a}/${a}/${a} ${b}/${b}/${b} ${c}/${c}/${c}\n`; }
     v += n;
   }
   // ---- paths and objects
   const lap = lapLoop.map((p, i) => { const pos = T(V3(p.Translate)), nx = T(V3(lapLoop[(i + 1) % lapLoop.length].Translate));
-    return { pos, yaw: Math.fround(yawTo(pos, nx)), rot: R(p.Rotate), w: Math.round(Math.min(80, Math.max(12, p.Scale.X * S * 0.7)) * 10) / 10, start: i === 0, cp: p.CheckPoint >= 0 }; });
+    return { pos, yaw: Math.fround(yawTo(pos, nx)), rot: R(p.Rotate), w: Math.round(Math.min(80, Math.max(12, p.Scale.X * S * 0.7)) * 10) / 10, h: Math.round(Math.min(80, Math.max(20, (p.Scale.Y || 0) * S))), start: i === 0, cp: p.CheckPoint >= 0 }; });
   // the CPU route: the group that loops back on itself, else the biggest
   const eg = mu.EnemyPath || []; let main = eg.findIndex((g, i) => g.PathPt.at(-1)?.NextPt?.some(n => n.PathId === i));
   if (main < 0) main = eg.reduce((b, g, i) => g.PathPt.length > (eg[b]?.PathPt.length || 0) ? i : b, 0);
