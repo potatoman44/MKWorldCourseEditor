@@ -185,6 +185,15 @@ export function bntxDecode(t, info, maxSize = 512) {
 // A long thin texture (MK8 has lots: road strips 5:1, building strips 4:1) is made square by repeating it along its
 // short side, and the model's UVs are shrunk to match. The game only takes square textures, and squashing a strip into a
 // square makes it go blurry a short way ahead (the GPU picks the smaller copies sooner along the stretched direction).
+// MK8's glow maps (lamps, screens, signs) add light on top of the colour: MKW's custom textures have no glow map, so the
+// glow is painted into the colour instead (lit lamps look lit, though they don't light anything up)
+function glow(im, em) {
+  if (!em) return;
+  for (let y = 0; y < im.h; y++) for (let x = 0; x < im.w; x++) {
+    const q = ((Math.floor(y * em.h / im.h)) * em.w + Math.floor(x * em.w / im.w)) * 4, o = (y * im.w + x) * 4;
+    for (let c = 0; c < 3; c++) im.rgba[o + c] = Math.min(255, im.rgba[o + c] + em.rgba[q + c]);
+  }
+}
 function squareUp(im) {
   const { w, h } = im; if (w === h) return { ...im, su: 1, sv: 1 };
   // k copies along the short side, each squeezed or stretched a little so that they fill the square exactly
@@ -268,8 +277,9 @@ export function convertMk8(files, opt = {}) {
       matsUsed.add(m.name); mtl += `newmtl ${m.name}\nKd 1 1 1\n`;
       const ai = m.samplers.indexOf('_a0'), tname = ai >= 0 ? m.textures[ai] : m.textures.find(t => /_Alb/.test(t));
       if (tname && texList.has(tname)) {
-        if (!imgOf.has(tname)) { const im = bntxDecode(bf.bntx, texList.get(tname), opt.texSize || 1024); if (im) { const sq = squareUp(im); images.push({ name: tname + '.png', w: sq.w, h: sq.h, rgba: sq.rgba }); imgOf.set(tname, { file: tname + '.png', su: sq.su, sv: sq.sv }); } }
-        if (imgOf.has(tname)) { mtl += `map_Kd ${imgOf.get(tname).file}\n`; uvScale.set(m.name, imgOf.get(tname)); }
+        const ei = m.samplers.indexOf('_e0'), ename = ei >= 0 ? m.textures[ei] : null, key = tname + (ename ? '+' + ename : '');
+        if (!imgOf.has(key)) { const im = bntxDecode(bf.bntx, texList.get(tname), opt.texSize || 1024); if (im && ename && texList.has(ename)) glow(im, bntxDecode(bf.bntx, texList.get(ename), opt.texSize || 1024)); if (im) { const file = (ename ? tname + '_lit' : tname) + '.png', sq = squareUp(im); images.push({ name: file, w: sq.w, h: sq.h, rgba: sq.rgba }); imgOf.set(key, { file, su: sq.su, sv: sq.sv }); } }
+        if (imgOf.has(key)) { mtl += `map_Kd ${imgOf.get(key).file}\n`; uvScale.set(m.name, imgOf.get(key)); }
       }
     }
     obj += `o ${s.name}\nusemtl ${m.name}\n`;
