@@ -348,8 +348,8 @@ function courseFromDoc(bytes, spec) {
   const doc = pbyml(bytes), r = doc.root;
   const used = new Set(); for (const a of r.Actors || []) if (a.Hash) used.add(a.Hash.v);
   const H = () => { let h; do h = rnd64(); while (used.has(h) || h === 0n); used.add(h); return h; };
-  const actors = (r.Actors || []).filter(a => !/^CmnObj_CTrkPart\d+_A_00$/.test(a.Name || ''));
-  for (const p of spec.parts) { const n = p.name + '_A_00'; actors.push({ Gyaml: `Work/Gyml/ActorGParam/${n}.gear__ActorGParam.gyml`, Hash: T.u64(H()), InstanceId: uuid(), IsGridify: false, Name: n, Rotate: [0, 0, 0], SRTHash: T.u32(rnd32()), Translate: p.pos }); }
+  const actors = (r.Actors || []).filter(a => !/^CmnObj_CTrk(Part|Game)\d+_A_00$/.test(a.Name || ''));
+  for (const p of [...spec.parts, ...(spec.gameParts || [])]) { const n = p.name + '_A_00'; actors.push({ Gyaml: `Work/Gyml/ActorGParam/${n}.gear__ActorGParam.gyml`, Hash: T.u64(H()), InstanceId: uuid(), IsGridify: false, Name: n, Rotate: [0, 0, 0], SRTHash: T.u32(rnd32()), Translate: p.pos }); }
   r.Actors = actors;
   // the editor's glide paths replace its old ones (those starting where it made one before); glide paths you added or kept in the course view stay
   if (spec.glidePaths) { const made = spec.glideMade, nv = v => (v && typeof v === 'object' && 'v' in v) ? Number(v.v) : Number(v);
@@ -409,6 +409,52 @@ function partFiles(AR, part, central, templ, texNames) {
     tags: [[`Work/Gyml/ActorGParam/${JF}`, A1], [`Work/Gyml/Component/ModelInfoGParam/${JF}`, A1], [`Work/Gyml/Component/PhysicsGParam/${JF}`, A1]] };
 }
 
+// ---------------------------------------------------------------- parts drawn with one of the game's own materials
+// The part's geometry goes into a copy of a game model, into the shape that uses that material: the material comes
+// with everything it needs (its shader settings, its textures, which are the game's own files, and its built-in
+// effects), and the part's model info is that model's own, so a scroll or colour animation set there plays too.
+export const GAME_MATS = {
+  filmroad: { model: 'CmnObj_FilmRoad000', v: 'A', shape: 1, label: 'Film road (Cheep Cheep Falls cinema; scrolls)' },
+  tv: { model: 'CmnObj_FilmRoad000', v: 'A', shape: 0, label: 'Cinema screen (glows, scrolls)' },
+  dash: { model: 'CmnObj_DashBoard000', v: 'A', shape: 0, label: 'Dash panel surface (moving arrows)' },
+  glide: { model: 'CmnObj_GlideBoard000', v: 'A', shape: 1, label: 'Glide panel surface (moving pattern)' },
+  lava: { model: 'CmnObj_SpecialSurfaceLavaLake000', v: 'F', shape: 0, label: 'Lava lake (flowing, glowing)' },
+};
+function gamePartFiles(AR, part, models, templ) {
+  const G = GAME_MATS[part.game], TM = G.model, TV = TM + '_' + G.v, A0 = TV + '_00', NEWN = part.name, A1 = NEWN + '_A_00', C0 = SRCN + '_A_00';
+  const g = (arc, p) => { const b = AR[arc].get(p); if (!b) throw new Error('missing ' + p); return b; };
+  const renC = s => s.replaceAll(C0, A1).replaceAll('ShapeParam/' + SRCN + '_A.', 'ShapeParam/' + NEWN + '_A.').replaceAll('Dcc/' + SRCN + '_A.phsh', 'Dcc/' + NEWN + '_A.phsh');
+  const adds = { actor: new Map(), modelinfo: new Map(), phwe: new Map(), phive: new Map(), actorinfo: new Map(), fmdbsummary: new Map() };
+  adds.actor.set(`Gyml/ActorGParam/${A1}.gear__ActorGParam.bgyml`, edit(g('actor', `Gyml/ActorGParam/${JF}.gear__ActorGParam.bgyml`), r => {
+    r.Components.ModelInfoRef = `Work/Gyml/Component/ModelInfoGParam/${A1}.gear__ModelInfoGParam.gyml`;
+    r.Components.PhysicsRef = `Work/Gyml/Component/PhysicsGParam/${A1}.gear__PhysicsGParam.gyml`; r.Label = 'Custom track part (game material)'; }));
+  // the game model's own model info (its scroll / colour settings), drawing our copy of the model; its motion
+  // animations are left out (they move bones and shapes of the original model)
+  adds.modelinfo.set(`Gyml/Component/ModelInfoGParam/${A1}.gear__ModelInfoGParam.bgyml`, edit(g('modelinfo', `Gyml/Component/ModelInfoGParam/${A0}.gear__ModelInfoGParam.bgyml`), r => {
+    if (r.GameModelInfo) { delete r.GameModelInfo.GpuMotionAnimArray; delete r.GameModelInfo.GpuMotionAutoAnimArray; }
+    // one model (no far-away stand-in), with the track parts' plain level-of-detail setting (every LOD draws the same)
+    r.ModelResource = [{ Fmdb: `Work/Model/CmnObj/${NEWN}/output/${NEWN}_A.fmdb`, LodInfo2: 'Work/Gyml/LodInfo2GParam/CmnObj.gear__LodInfo2GParam.gyml' }];
+    delete r.ModelDisntaceMap; delete r.LodFar; return r; }));
+  adds.phwe.set(`Gyml/Component/PhysicsGParam/${A1}.gear__PhysicsGParam.bgyml`, edit(g('phwe', `Gyml/Component/PhysicsGParam/${C0}.gear__PhysicsGParam.bgyml`), r => deepStrings(r, renC)));
+  adds.phive.set(`Phive/ControllerSetParam/${A1}.phive__ControllerSetParam.bgyml`, edit(g('phive', `Phive/ControllerSetParam/${JF}.phive__ControllerSetParam.bgyml`), () => ({
+    ControllerEntityNamePathAry: [{ FilePath: 'Work/Phive/RigidBodyControllerEntityParam/StageDefault.phive__RigidBodyControllerEntityParam.gyml', Name: 'MainController' }],
+    RigidBodyEntityNamePathAry: [{ FilePath: 'Work/Phive/RigidBodyEntityParam/StageDefault.phive__RigidBodyEntityParam.gyml', Name: 'StageDefault' }],
+    ShapeNamePathAry: [{ FilePath: `Work/Phive/ShapeParam/${NEWN}_A.phive__ShapeParam.gyml`, Name: 'StageDefault' }] })));
+  adds.phive.set(`Phive/ShapeParam/${NEWN}_A.phive__ShapeParam.bgyml`, edit(g('phive', `Phive/ShapeParam/${SRCN}_A.phive__ShapeParam.bgyml`), r => deepStrings(r, renC)));
+  const mn = part.min, mx = part.max, c = [0, 1, 2].map(a => (mn[a] + mx[a]) / 2), R = Math.hypot(mx[0] - c[0], mx[1] - c[1], mx[2] - c[2]), V = v => ({ X: v[0], Y: v[1], Z: v[2] });
+  const rh = (() => { try { return pbyml(g('actorinfo', `Gyml/ActorInfoGParam/${A0}.game__ActorInfoGParam.bgyml`)).root.RenderModelHeapSize.Default.v; } catch { return pbyml(g('actorinfo', `Gyml/ActorInfoGParam/${C0}.game__ActorInfoGParam.bgyml`)).root.RenderModelHeapSize.Default.v; } })();
+  adds.actorinfo.set(`Gyml/ActorInfoGParam/${A1}.game__ActorInfoGParam.bgyml`, edit(g('actorinfo', `Gyml/ActorInfoGParam/${JF}.game__ActorInfoGParam.bgyml`), r => {
+    r.ActorPath = `Work/Gyml/ActorGParam/${A1}.gear__ActorGParam.gyml`; r.ModelInfoPath = `Work/Gyml/Component/ModelInfoGParam/${A1}.gear__ModelInfoGParam.gyml`;
+    r.LoadDist = 4000; r.CalcDist = 4000; r.ActorRadius = R + 10; r.ModelRadius = R; r.ModelAABBMin = V(mn); r.ModelAABBMax = V(mx); r.ModelCenter = V(c);
+    r.RenderModelHeapSize.Default = T.i32(Math.max(rh, 0x40000)); r.DrawArraySize = T.u32(1); }));
+  adds.fmdbsummary.set(`Gyml/FmdbExSummaryGParam/${NEWN}.${NEWN}_A.gear__FmdbExSummaryGParam.bgyml`, edit(g('fmdbsummary', `Gyml/FmdbExSummaryGParam/${TM}.${TV}.gear__FmdbExSummaryGParam.bgyml`), r => {
+    r.BoundingMin = V(mn); r.BoundingMax = V(mx); r.SphereBBCenter = V(c); r.SphereBBRadius = R; }));
+  const bf = writeModel(models.get(TV), { [G.shape]: part.geom }, NEWN + '_A', { allLods: true, shapeOf: k => +k });
+  const col = writeBphsh(templ, part.col.tris, part.col.mats);
+  return { adds, A1, raw: [[`Model/${NEWN}.${NEWN}_A.bfres`, bf.bytes], [`Phive/Shape/Dcc/${NEWN}_A.Nin_Ounce_NVN2.bphsh`, col.bytes]], report: bf.report,
+    tags: [[`Work/Gyml/ActorGParam/${JF}`, A1], [`Work/Gyml/Component/ModelInfoGParam/${JF}`, A1], [`Work/Gyml/Component/PhysicsGParam/${JF}`, A1]] };
+}
+
 /**
  * rd(path) -> raw bytes of a romfs file (still .zs-compressed where the game's is)
  * spec: { display, cup, stageType, parts:[{name, pos, min, max, geom, col:{tris,mats}}], lap, route, actors }
@@ -419,7 +465,7 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
   // Rainbow Road's (stage files are renamed in place); tag: 4 letters that replace 'CTrk' in the track's part and texture names
   const SL = spec.slot ? { ...SLOT, ...spec.slot } : SLOT, { SA, SZ, CA, CZ } = SL, TAG = SL.tag || 'CTrk', SZ7 = SZ.slice(0, SZ.length - 3), files = new Map(), sizes = new Map();
   if (SZ.length !== SA.length || CZ.length !== CA.length || TAG.length !== 4) throw new Error('slot names must be the same length as Rainbow Road\'s');
-  if (spec.slot) spec = { ...spec, parts: spec.parts.map(pt => ({ ...pt, name: pt.name.replace('CTrk', TAG) })) };
+  if (spec.slot) spec = { ...spec, parts: spec.parts.map(pt => ({ ...pt, name: pt.name.replace('CTrk', TAG) })), gameParts: (spec.gameParts || []).map(pt => ({ ...pt, name: pt.name.replace('CTrk', TAG) })) };
   const V = await gameVersion(rd);
   if (!V) throw new Error('this RomFS has no System/Resource/ResourceSizeTable.Product.###… file: pick the game\'s romfs folder (for 1.1 and later, the update\'s romfs)');
   const R = async p => { const b = await rd(p); if (!b) throw new Error('missing from the dump: ' + p + (p.includes(V) ? ` (your dump is version ${verLabel(V)})` : '')); return b; };
@@ -464,6 +510,16 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
     }
     return m;
   };
+  // parts drawn with a game material (spec.gameParts): a copy of that game model each
+  const gModels = new Map();
+  for (const part of spec.gameParts || []) {
+    const G = GAME_MATS[part.game]; if (!G) throw new Error('unknown game material ' + part.game);
+    const TV = G.model + '_' + G.v; if (!gModels.has(TV)) gModels.set(TV, await Rz(`Model/${G.model}.${TV}.bfres.zs`));
+    const f = gamePartFiles(AR, part, gModels, templ);
+    for (const [k, m] of Object.entries(f.adds)) { P.adds[k] = P.adds[k] || new Map(); for (const [n, b] of m) P.adds[k].set(n, b); }
+    for (const [p, b] of f.raw) { putZ(p + '.zs', b); sizes.set(p, b.length); }
+    P.tags.push(...f.tags); P.names.push(f.A1); P.report.push(f.report);
+  }
   for (const part of spec.parts) {
     const f = partFiles(AR, part, central, templ, texRenames(part));
     for (const [k, m] of Object.entries(f.adds)) { P.adds[k] = P.adds[k] || new Map(); for (const [n, b] of m) P.adds[k].set(n, b); }
@@ -523,7 +579,7 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
   }
   // course file + CPU data (once the track is finished: the course edited in the course view, plus the model's parts)
   progress('Writing the course…');
-  const banc = spec.docBytes ? courseFromDoc(spec.docBytes, spec) : buildCourse(await Rz(`Banc/${CA}[Game03].bcett.byml.zs`), { ...spec, actors: [...spec.parts.map(p => ({ name: p.name + '_A_00', pos: p.pos })), ...spec.actors] });
+  const banc = spec.docBytes ? courseFromDoc(spec.docBytes, spec) : buildCourse(await Rz(`Banc/${CA}[Game03].bcett.byml.zs`), { ...spec, actors: [...[...spec.parts, ...(spec.gameParts || [])].map(p => ({ name: p.name + '_A_00', pos: p.pos })), ...spec.actors] });
   { // lap path boxes that float above the road: karts on the road would count as out of bounds
     const nv = v => (v && typeof v === 'object' && 'v' in v) ? Number(v.v) : Number(v); let up = 0, thin = 0;
     for (const rl of pbyml(banc.bytes).root.Rails || []) if (rl.Name === 'LapPathGraph') for (const p of rl.Points) {

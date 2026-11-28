@@ -65,7 +65,7 @@ export function writeModel(src, geom, newname, opt = {}) {
     const sv = new DataView(src.buffer, src.byteOffset, src.byteLength), u8 = o => src[o], u16 = o => sv.getUint16(o, true), u32 = o => sv.getUint32(o, true), off = o => Number(sv.getBigUint64(o, true));
     const m = off(0x28), shapes = off(m + 0x28), ns = u16(m + 0x6a), out = new Map();
     for (const [k, [V, TR]] of Object.entries(geom)) {
-      const s = MAT[k]; if (s === undefined || s >= ns || !TR.length) continue;
+      const s = (opt.shapeOf || (x => MAT[x]))(k); if (s === undefined || s >= ns || !TR.length) continue;
       const sh = shapes + 0x60 * s, vb = off(sh + 0x10), nv = u32(vb + 0x50), me = off(sh + 0x18), cnt = u32(me + 0x2c), base = u32(me + 0x30);
       if (3 * TR.length <= cnt && base + V.length <= nv) continue;
       if (V.length > 65535) throw new Error('too many vertices in one material (' + V.length + '): the most is 65535');
@@ -86,7 +86,7 @@ export function writeModel(src, geom, newname, opt = {}) {
   if (newname.length > old.length) throw new Error('model name too long');
   dv.setUint16(nm, newname.length, true); d.fill(0, nm + 2, nm + 2 + old.length + 1); d.set(new TextEncoder().encode(newname), nm + 2);
   const shapes = off(m + 0x28), ns = u16(m + 0x6a);
-  const bysh = new Map(Object.entries(geom).map(([k, v]) => [MAT[k], v]));
+  const bysh = new Map(Object.entries(geom).map(([k, v]) => [(opt.shapeOf || (x => MAT[x]))(k), v]));
   const report = {};
   for (let s = 0; s < ns; s++) {
     const sh = shapes + 0x60 * s, vb = off(sh + 0x10), nv = u32(vb + 0x50), attrs = off(vb + 8), A = {};

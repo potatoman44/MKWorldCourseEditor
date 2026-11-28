@@ -9,7 +9,7 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.9 test 4';
+const EDITOR_VER = 'v1.9 test 5';
 import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas, sarcAdd as nsSarcAdd, mmh3 as nsMmh3, msbtAppend, parseMsbt as nsParseMsbt } from './newslot.js';
 import { setupTrackPack } from './trackpack.js';
 import { convertMk8 } from './mk8import.js';
@@ -2424,8 +2424,34 @@ async function tcWorldSpec(withParts) {
   if (TC.glideMade.length > 300) TC.glideMade = TC.glideMade.slice(-300);
   const toW = n => ({ ...n, pos: n.pos.map((v, i) => Math.fround(SLOT_START[i] + v)), yaw: Math.fround(n.yaw) });
   const railPaths = (tcImporting() ? TC.railsImp.map(tcRailNodes) : g.railPaths || []).filter(r => r.length >= 2).map(r => r.map(toW));
+  // test pieces drawn with the game's own materials (TC.gameParts: [{game, t: 0..1 along the lap, off: m to the side, len, wid, lift, up}])
+  const gameParts = (TC.gameParts || []).map((gp, i) => tcGamePart(gp, i, g)).filter(Boolean).map(p => ({ ...p, pos: SLOT_START.map((v, k) => Math.fround(v + p.local[k])) }));
   const gravW = k => tcImporting() ? (TC.qc?.[k] || []).filter(r => r.length >= 2).map(r => r.map(toW)) : [];
-  return { g, w, rd, spec: { gravityPaths: gravW('gravity'), gravityCamPaths: gravW('gcam'), glidePaths: glides, glideMade: TC.glideMade, railPaths, laps: g.opts.laps, raceType: g.opts.race, parts: w.parts, lap: w.lap, route: w.route, routes: w.routes, lapRails: w.lapRails, routeRails: w.routeRails, starts: w.starts, actors: w.actors, extent: w.extent, startHeight: tcImporting() && !(w.starts && w.starts.length) ? (x, z) => tcHeightW(x, 0, z) : null } };
+  return { g, w, rd, spec: { gameParts, gravityPaths: gravW('gravity'), gravityCamPaths: gravW('gcam'), glidePaths: glides, glideMade: TC.glideMade, railPaths, laps: g.opts.laps, raceType: g.opts.race, parts: w.parts, lap: w.lap, route: w.route, routes: w.routes, lapRails: w.lapRails, routeRails: w.routeRails, starts: w.starts, actors: w.actors, extent: w.extent, startHeight: tcImporting() && !(w.starts && w.starts.length) ? (x, z) => tcHeightW(x, 0, z) : null } };
+}
+// one test piece: a strip lying on the road (or standing beside it, up: true) at a point of the lap path
+function tcGamePart(gp, i, g) {
+  const lap = g.lap; if (!lap?.length) return null;
+  const n = lap.length, k = Math.max(0, Math.min(n - 1, Math.round((gp.t || 0) * n))), node = lap[k], nx = lap[(k + 1) % n];
+  const yaw = Math.atan2(nx.pos[0] - node.pos[0], nx.pos[2] - node.pos[2]), f = [Math.sin(yaw), 0, Math.cos(yaw)], s = [Math.cos(yaw), 0, -Math.sin(yaw)];
+  const len = gp.len || 20, wid = gp.wid || 8, off = gp.off || 0, lift = gp.lift ?? 0.03;
+  const local = [node.pos[0] + s[0] * off, node.pos[1] + lift, node.pos[2] + s[2] * off];
+  // a grid of quads, so long strips still follow the UVs' tiling; u across, v along (repeating every `wid` metres)
+  const V = [], TR = [], tris = [], nu = 1, nv = Math.max(1, Math.round(len / Math.max(1, wid)));
+  const at = (a, b) => gp.up ? [s[0] * 0 + f[0] * (a - 0.5) * wid, b * len, f[2] * (a - 0.5) * wid] : [s[0] * (a - 0.5) * wid + f[0] * b * len, 0, s[2] * (a - 0.5) * wid + f[2] * b * len];
+  const nrm = gp.up ? s.map(x => -x * Math.sign(off || 1)) : [0, 1, 0];
+  for (let b = 0; b <= nv; b++) for (let a = 0; a <= nu; a++) V.push([at(a / nu, b / nv), nrm, [a / nu * (gp.uScale || 1), b * (gp.vScale ?? (len / nv / wid))]]);
+  for (let b = 0; b < nv; b++) for (let a = 0; a < nu; a++) { const p = b * (nu + 1) + a, q = p + nu + 1; TR.push([p, q, p + 1], [p + 1, q, q + 1]); }
+  // face the right way: the normal from the winding has to agree with nrm
+  for (const t of TR) { const [A, B, C] = t.map(x => V[x][0]), c = [(B[1] - A[1]) * (C[2] - A[2]) - (B[2] - A[2]) * (C[1] - A[1]), (B[2] - A[2]) * (C[0] - A[0]) - (B[0] - A[0]) * (C[2] - A[2]), (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0])]; if (c[0] * nrm[0] + c[1] * nrm[1] + c[2] * nrm[2] < 0) [t[1], t[2]] = [t[2], t[1]]; }
+  const B = id => { const b = BRUSHES.find(x => x.id === id); return [b.mat, b.sub, b.mask]; };
+  const colOf = { filmroad: 'road_asphalt', dash: 'boost', glide: 'glide', lava: null, tv: null }[gp.game];
+  const mats = [B(colOf || 'road_asphalt'), B('fall')];
+  if (colOf) for (const t of TR) tris.push([t.map(x => V[x][0]), 0]);
+  if (gp.game === 'lava') for (const t of TR) tris.push([t.map(x => [V[x][0][0], V[x][0][1] - 0.6, V[x][0][2]]), 1]);   // fall out just under the surface
+  if (!tris.length) { const p = V[0][0]; tris.push([[p, [p[0] + 0.01, p[1] - 30, p[2]], [p[0], p[1] - 30, p[2] + 0.01]], 0]); }   // (a part needs some collision: a sliver far below)
+  const ps = V.map(v => v[0]), mn = [0, 1, 2].map(a => Math.min(...ps.map(p => p[a]))), mx = [0, 1, 2].map(a => Math.max(...ps.map(p => p[a])));
+  return { name: 'CmnObj_CTrkGame' + String(i).padStart(2, '0'), game: gp.game, local, min: mn, max: mx, geom: [V, TR], col: { tris, mats } };
 }
 async function tcBuildSpec() {
     const display = $('#tc_name').value.trim() || 'Custom Track';
