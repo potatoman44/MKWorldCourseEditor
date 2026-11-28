@@ -1,6 +1,7 @@
 // Track generator: a closed centre line -> road/shoulder/wall/ground geometry, collision, lap path, CPU route and items.
 // Everything is built in "track space": the start line is at (0,0,0) and the race starts heading -Z.
 import { MAT } from './bfmodel.js';
+const _mn = a => { let m = Infinity; for (const v of a) if (v < m) m = v; return m; }, _mx = a => { let m = -Infinity; for (const v of a) if (v > m) m = v; return m; };   // Math.min/max(...a) without the argument limit
 
 export const DEFAULTS = {
   width: 20, shoulder: 3, wallHeight: 1.5, ground: true, groundMargin: 25, segLen: 5,
@@ -154,13 +155,13 @@ export function generate(points, o, cap) {
   if (anySide('hill')) use(o.groundMat, 4, 4);
   if (anySide('bridge')) use(o.wallMat, 8, 8);
   for (const [m, [t, v]] of Object.entries(by)) need(m, t, v);
-  const perPart = Math.max(4, Math.min(...lim));
+  const perPart = Math.max(4, _mn(lim));
   const parts = [];
   if (!o.noRoad) for (let i0 = 0; i0 < N; i0 += perPart) parts.push([i0, Math.min(N, i0 + perPart)]);
   // with an imported model the paths sit on its surface
   const H = p => { if (!o.heightAt) return p; const y = o.heightAt(p[0], p[1], p[2]); return y === null || y === undefined ? p : [p[0], y, p[2]]; };
   const all = rings.map(r => r.p);
-  const mn = [0, 1, 2].map(a => Math.min(...all.map(p => p[a]))), mx = [0, 1, 2].map(a => Math.max(...all.map(p => p[a])));
+  const mn = [0, 1, 2].map(a => _mn(all.map(p => p[a]))), mx = [0, 1, 2].map(a => _mx(all.map(p => p[a])));
   const out = parts.map(([i0, i1], pi) => {
     const R = rings.slice(i0, i1 + 1);
     const pos = [0, 1, 2].map(a => R.reduce((s, r) => s + r.p[a], 0) / R.length);
@@ -237,12 +238,12 @@ export function generate(points, o, cap) {
       quadStrip(o.cliffMat, [off(r, sw), off(r, sw, -depth)], [off(r, -sw), off(r, -sw, -depth)], 1, [[0, 0], [0, depth / sz]], [[2 * sw / sz, 0], [2 * sw / sz, depth / sz]], true, false);
     }
     for (const [k0, k1] of runs((a, b) => solid(a, b) && (RS(a).h > 0 || RS(b).h > 0))) for (const side of [1, -1]) {
-      const u = UV('wall'), Rr = R.slice(k0, k1 + 1), hs = Rr.map((_, k) => RS(k0 + k).h), tall = u.size || Math.max(...hs), wide = tall / u.aspect, s0 = Math.floor(Rr[0].s / wide) * wide;
+      const u = UV('wall'), Rr = R.slice(k0, k1 + 1), hs = Rr.map((_, k) => RS(k0 + k).h), tall = u.size || _mx(hs), wide = tall / u.aspect, s0 = Math.floor(Rr[0].s / wide) * wide;
       const a = Rr.map(r => off(r, side * sw)), b = Rr.map((r, k) => off(r, side * sw, hs[k]));
       quadStrip(o.wallMat, a, b, 1, Rr.map((r, k) => [(r.s - s0) / wide, hs[k] / tall]), Rr.map(r => [(r.s - s0) / wide, 0]), true, false);
     }
     for (const [k0, k1] of runs((a, b) => solid(a, b) && RS(a).tunnel && RS(b).tunnel)) {   // the roof: across from wall top to wall top, seen from below (and above)
-      const u = UV('wall'), Rr = R.slice(k0, k1 + 1), hs = Rr.map((_, k) => RS(k0 + k).h), tall = u.size || Math.max(...hs), wide = tall / u.aspect, s0 = Math.floor(Rr[0].s / wide) * wide;
+      const u = UV('wall'), Rr = R.slice(k0, k1 + 1), hs = Rr.map((_, k) => RS(k0 + k).h), tall = u.size || _mx(hs), wide = tall / u.aspect, s0 = Math.floor(Rr[0].s / wide) * wide;
       quadStrip(o.wallMat, Rr.map((r, k) => off(r, sw, hs[k])), Rr.map((r, k) => off(r, -sw, hs[k])), 1, Rr.map(r => [(r.s - s0) / wide, 0]), Rr.map(r => [(r.s - s0) / wide, 2 * sw / tall]), true, false);
     }
     for (const side of [1, -1]) for (const [k0, k1] of runs((a, b) => solid(a, b) && RS(a).rails.includes(side) && RS(b).rails.includes(side))) {   // a metal tube along the wall's top (looks only: the rail path is what you grind on)
@@ -319,7 +320,7 @@ export function generate(points, o, cap) {
       for (const t of TR) { const n = cross(sub(V[t[1]][0], V[t[0]][0]), sub(V[t[2]][0], V[t[0]][0])); if (n[1] < 0) [t[1], t[2]] = [t[2], t[1]]; }
     for (const t of tris) { const [a, b, c] = t[0]; const n = cross(sub(b, a), sub(c, a)); if (t[1] !== 1 && t[1] !== 5 && t[1] !== 7 && n[1] < 0) t[0] = [a, c, b]; }
     const pts = Object.values(geom).flatMap(([V]) => V.map(v => v[0]));
-    const bmin = [0, 1, 2].map(a => Math.min(...pts.map(p => p[a]))), bmax = [0, 1, 2].map(a => Math.max(...pts.map(p => p[a])));
+    const bmin = [0, 1, 2].map(a => _mn(pts.map(p => p[a]))), bmax = [0, 1, 2].map(a => _mx(pts.map(p => p[a])));
     return { name: `CmnObj_CTrkPart${String(pi).padStart(3, '0')}`, local: pos, min: bmin, max: bmax, geom, col: { tris, mats: [SURF.road, SURF.wall, SURF.grass, SURF.sand, SURF.railTop, SURF.railSide, SURF.fall, SURF.trampoline] }, rings: [i0, i1] };
   });
   // paths and objects (track space)

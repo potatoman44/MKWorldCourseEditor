@@ -2,6 +2,7 @@
 // material, every other shape collapsed. Port of the tested meshmodel.py, plus: LODs too small for the geometry
 // reuse LOD 0's draw (so parts don't vanish in the distance).
 import { roundEven } from './hk.js';
+const _mn = a => { let m = Infinity; for (const v of a) if (v < m) m = v; return m; }, _mx = a => { let m = -Infinity; for (const v of a) if (v > m) m = v; return m; };   // Math.min/max(...a) without the argument limit
 
 export const MAT = { asphalt: 10, floorparts: 8, floortile: 11, decomark: 7, frame: 9, wall03: 0, backside01: 2, watersedge: 4, framesparts: 5, backside00: 6, wall06: 1, wiremesh: 12, floorlight: 3 };
 
@@ -152,7 +153,7 @@ export function writeModel(src, geom, newname, opt = {}) {
     }
     const bb = off(sh + 0x38), br = off(sh + 0x40);
     if (TR.length) {
-      const ps = V.map(v => v[0]), mn = [0, 1, 2].map(a => Math.min(...ps.map(p => p[a]))), mx = [0, 1, 2].map(a => Math.max(...ps.map(p => p[a])));
+      const ps = V.map(v => v[0]), mn = [0, 1, 2].map(a => _mn(ps.map(p => p[a]))), mx = [0, 1, 2].map(a => _mx(ps.map(p => p[a])));
       const c = [0, 1, 2].map(a => (mn[a] + mx[a]) / 2), e = [0, 1, 2].map(a => Math.max(0.5, (mx[a] - mn[a]) / 2));
       for (let p = bb; p < br; p += 24) [...c, ...e].forEach((x, i) => dv.setFloat32(p + 4 * i, x, true));
       [...c, Math.sqrt(e[0] ** 2 + e[1] ** 2 + e[2] ** 2)].forEach((x, i) => dv.setFloat32(br + 4 * i, x, true));

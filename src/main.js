@@ -9,9 +9,10 @@ import { parseSarc } from './sarc.js';
 import { replaceBntxAstc, bntxInfo, bntxToRGBA, untile } from './astc.js';
 import { SURFACES, ROADTEX, ALL_TEX, texByName, DEFAULT_SIZE, VS_STAGES } from './roadtex.js';
 import { removeBakedCollision } from './bphsc.js';
-const EDITOR_VER = 'v1.8';
+const EDITOR_VER = 'v1.9 test 1';
 import { buildNewSlot, courseDocBytes, START as SLOT_START, SLOT as NEWSLOT, gameVersion, verLabel, barsHas, sarcAdd as nsSarcAdd, mmh3 as nsMmh3, msbtAppend, parseMsbt as nsParseMsbt } from './newslot.js';
 import { setupTrackPack } from './trackpack.js';
+import { convertMk8 } from './mk8import.js';
 import { renameBntx as pkRenameBntx } from './astc.js';
 import { parseSarc as parseSarcM } from './sarc.js';
 import { generate, toWorld, applySections, DEFAULTS as TC_DEFAULTS, DEFAULT_POINTS, LOCK_AFTER, LOCK_BEFORE, SURF } from './trackgen.js';
@@ -2423,7 +2424,8 @@ async function tcWorldSpec(withParts) {
   if (TC.glideMade.length > 300) TC.glideMade = TC.glideMade.slice(-300);
   const toW = n => ({ ...n, pos: n.pos.map((v, i) => Math.fround(SLOT_START[i] + v)), yaw: Math.fround(n.yaw) });
   const railPaths = (tcImporting() ? TC.railsImp.map(tcRailNodes) : g.railPaths || []).filter(r => r.length >= 2).map(r => r.map(toW));
-  return { g, w, rd, spec: { glidePaths: glides, glideMade: TC.glideMade, railPaths, laps: g.opts.laps, raceType: g.opts.race, parts: w.parts, lap: w.lap, route: w.route, routes: w.routes, lapRails: w.lapRails, routeRails: w.routeRails, starts: w.starts, actors: w.actors, extent: w.extent, startHeight: tcImporting() && !(w.starts && w.starts.length) ? (x, z) => tcHeightW(x, 0, z) : null } };
+  const gravW = k => tcImporting() ? (TC.qc?.[k] || []).filter(r => r.length >= 2).map(r => r.map(toW)) : [];
+  return { g, w, rd, spec: { gravityPaths: gravW('gravity'), gravityCamPaths: gravW('gcam'), glidePaths: glides, glideMade: TC.glideMade, railPaths, laps: g.opts.laps, raceType: g.opts.race, parts: w.parts, lap: w.lap, route: w.route, routes: w.routes, lapRails: w.lapRails, routeRails: w.routeRails, starts: w.starts, actors: w.actors, extent: w.extent, startHeight: tcImporting() && !(w.starts && w.starts.length) ? (x, z) => tcHeightW(x, 0, z) : null } };
 }
 async function tcBuildSpec() {
     const display = $('#tc_name').value.trim() || 'Custom Track';
@@ -3561,6 +3563,37 @@ $('#tc_col').onclick = () => { if (!TC.vis) return toast('Import the model first
 $('#tc_colclear').onclick = () => { TC.col = null; idb.set('tc-col', null); tcFillMaps(); TC.impKey = ''; tcUpdate(); };
 const tcReadFiles = async list => Promise.all([...list].map(async f => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
 $('#tc_visfile').onchange = async e => { const fs = await tcReadFiles(e.target.files); e.target.value = ''; if (fs.length) await tcSetModel('vis', fs); };
+// a Mario Kart 8 Deluxe course (course_model.szs, course_kcl.szs, course_muunt.byaml from one Course folder): its model,
+// collision, lap path, CPU route, item boxes, coins, glide and anti-gravity paths, as an imported model with its paths laid out
+$('#tc_mk8').onclick = () => $('#tc_mk8file').click();
+$('#tc_mk8file').onchange = async e => {
+  const fs = await tcReadFiles(e.target.files); e.target.value = '';
+  const get = re => fs.find(f => re.test(f.name))?.bytes;
+  const files = { model: get(/^course_model\.szs$/i), kcl: get(/^course_kcl\.szs$/i), muunt: get(/^course_muunt\.byaml$/i) };
+  const miss = Object.entries({ 'course_model.szs': files.model, 'course_kcl.szs': files.kcl, 'course_muunt.byaml': files.muunt }).filter(([, b]) => !b).map(([n]) => n);
+  if (miss.length) return toast('Pick these from the MK8 Deluxe course\'s folder (Course/<name>) together: ' + miss.join(', '), 'err', 10000);
+  busy('Converting the MK8 Deluxe course…'); await new Promise(r => setTimeout(r, 30));
+  try {
+    const r = convertMk8(files), enc = new TextEncoder();
+    busy('Saving its textures…');
+    const png = async im => { const c = document.createElement('canvas'); c.width = im.w; c.height = im.h; c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(im.rgba.buffer, im.rgba.byteOffset, im.rgba.length), im.w, im.h), 0, 0);
+      return new Uint8Array(await (await new Promise(res => c.toBlob(res, 'image/png'))).arrayBuffer()); };
+    const vis = [{ name: 'course.obj', bytes: enc.encode(r.visual.obj) }, { name: 'course.mtl', bytes: enc.encode(r.visual.mtl) }];
+    for (const im of r.visual.images) vis.push({ name: im.name, bytes: await png(im) });
+    // the model is already in metres with the start line at the origin: no extra placement
+    for (const [k, id] of Object.entries(TC_PLACE)) $('#' + id).value = k === 'scale' ? 1 : 0;
+    $('#tc_zup').checked = false; TC.pivot = [0, 0, 0];
+    $('#tc_src').value = 'import'; tcSrcChanged();
+    for (const s of Object.keys(r.stats.surfaces)) TC.map.surf[s] = s;   // the collision's materials are named after the surfaces
+    await tcSetModel('vis', vis, true);
+    await tcSetModel('col', [{ name: 'course_col.obj', bytes: enc.encode(r.collision.obj) }], true);
+    for (const s of Object.keys(r.stats.surfaces)) TC.map.surf[s] = s;
+    TC.qc = r.qc; TC.impKey = ''; tcSave(); tcFillMaps(); tcUpdate(); tcFrameModel();
+    const st = r.stats;
+    toast(`Converted: ${st.tris} triangles with ${st.textures} textures, ${st.colTris} collision triangles, lap path (${st.lap} points), CPU route, ${st.items} item boxes, ${st.coins} coins` + (st.glides ? `, ${st.glides} glide path${st.glides > 1 ? 's' : ''}` : '') + (st.gravity ? `, ${st.gravity} anti-gravity path${st.gravity > 1 ? 's' : ''}` : '') + '. Build it like any imported track.', 'ok', 15000);
+  } catch (err) { console.error(err); toast('Couldn\'t convert that course: ' + err.message, 'err', 12000); }
+  busy();
+};
 $('#tc_colfile').onchange = async e => { const fs = await tcReadFiles(e.target.files); e.target.value = ''; if (fs.length) await tcSetModel('col', fs); };
 $('#tc_texfile').onchange = async e => {
   const [f] = await tcReadFiles(e.target.files); e.target.value = ''; const n = TC.pickFor; if (!f || !n) return;
@@ -3706,7 +3739,7 @@ function railGraph(main, closed, alts) {
 const tcBranches = q => (q.branches || []).map(b => ({ b, a: nearestIdx(q.lap, b.from), z: nearestIdx(q.lap, b.to) })).filter(x => x.a >= 0 && x.z > x.a + 1 && x.b.lap.length);
 function tcQCSpec(q) {
   let cp = 0;
-  const lap = q.lap.map(f => ({ pos: f.pos, yaw: f.yaw, rs: [nodeW(q, f), 20], ro: [0, 10], dyn: f.start ? { IsStart: true } : f.cp ? { CheckPoint: ++cp } : null }));
+  const lap = q.lap.map(f => ({ pos: f.pos, yaw: f.yaw, ...(f.rot ? { rot: f.rot } : {}), rs: [nodeW(q, f), 20], ro: [0, 10], dyn: f.start ? { IsStart: true } : f.cp ? { CheckPoint: ++cp } : null }));
   { const o = tcOpts(); applySections(lap, o.race, o.sections, q.closed); }
   const brs = tcBranches(q);
   // each alternate route carries the same checkpoint numbers as the stretch of lap path it replaces

@@ -6,6 +6,7 @@ import { parseSarc } from './sarc.js';
 import { writeBphsh } from './hk.js';
 import { writeModel, slotTextures, renameStrings, MAT } from './bfmodel.js';
 import { replaceBntx, flatBntx, renameBntx, bntxInfo } from './astc.js';
+const _mn = a => { let m = Infinity; for (const v of a) if (v < m) m = v; return m; }, _mx = a => { let m = -Infinity; for (const v of a) if (v > m) m = v; return m; };   // Math.min/max(...a) without the argument limit
 
 const LIFT_OBJ = /Wanwan|Bomhei|Kuribo|Hanachan|Nokonoko|Togezo|Heyho/;
 // an island tunnel (CmnObj_IslandTunnel000) turned to face heading yaw (atan2(x, z) of the way out). Scene rotations are
@@ -290,6 +291,10 @@ function railGraph(kind, rails, H) {
 const glideRails = (spec, H) => railGraph('GlidePath', (spec.glidePaths || []).filter(n => n.length >= 2).map(nodes => ({ nodes, next: [] })), H);
 // grind rails: spec.railPaths = [[node, ...], ...] -> RailSlidePath (a line along a rail's top; the 0.5 m box is the rail's thickness)
 const slideRails = (spec, H) => railGraph('RailSlidePath', (spec.railPaths || []).filter(n => n.length >= 2).map(nodes => ({ nodes, next: [] })), H);
+// anti-gravity (like Rainbow Road's): spec.gravityPaths / spec.gravityCamPaths = [[node with a full rot, ...], ...]. Each
+// GravityPath node's rot says which way is down there; GravityCameraPath turns the camera with the kart
+const gravityRails = (spec, H) => [...railGraph('GravityPath', (spec.gravityPaths || []).filter(n => n.length >= 2).map(nodes => ({ nodes, next: [] })), H),
+  ...railGraph('GravityCameraPath', (spec.gravityCamPaths || []).filter(n => n.length >= 2).map(nodes => ({ nodes, next: [] })), H)];
 function buildCourse(bytes, spec) {
   const doc = pbyml(bytes), r = doc.root; r.FilePath = r.FilePath.replace(SLOT.CA, SLOT.CZ);
   const used = new Set(); const H = () => { let h; do h = rnd64(); while (used.has(h) || h === 0n); used.add(h); return h; };
@@ -317,13 +322,13 @@ function buildCourse(bytes, spec) {
   // a single loop: only last -> first closes it
   const lapRails = spec.lapRails || [{ nodes: spec.lap, next: [0] }];
   const routeRails = spec.routeRails || routes.map((rt, i) => ({ nodes: rt, next: [i] }));
-  r.Rails = [...graph('LapPathGraph', lapRails), ...graph('RoutePathGraph', routeRails), ...glideRails(spec, H), ...slideRails(spec, H)];
+  r.Rails = [...graph('LapPathGraph', lapRails), ...graph('RoutePathGraph', routeRails), ...glideRails(spec, H), ...slideRails(spec, H), ...gravityRails(spec, H)];
   r.Actors = actors;
   const ca = {}; for (const a of actors) ca[a.Name] = T.i32((ca[a.Name]?.v || 0) + 1); r.CountActor = ca;
-  r.CountRail = { LapPathGraph: T.i32(lapRails.length), RoutePathGraph: T.i32(routeRails.length) }; for (const k of ['GlidePath', 'RailSlidePath']) { const ng = r.Rails.filter(rl => rl.Name === k).length; if (ng) r.CountRail[k] = T.i32(ng); }
+  r.CountRail = { LapPathGraph: T.i32(lapRails.length), RoutePathGraph: T.i32(routeRails.length) }; for (const k of ['GlidePath', 'RailSlidePath', 'GravityPath', 'GravityCameraPath']) { const ng = r.Rails.filter(rl => rl.Name === k).length; if (ng) r.CountRail[k] = T.i32(ng); }
   r.Collects = { Coin: T.i32(actors.filter(a => a.Name === 'CmnObj_Coin000_A_00').length) };
   const ps = [...actors.map(a => a.Translate), ...lapRails.flatMap(rl => rl.nodes.map(n => n.pos)), ...(spec.extent || [])];
-  r.AABB = { Max: [0, 1, 2].map(k => Math.max(...ps.map(p => p[k])) + 150), Min: [0, 1, 2].map(k => Math.min(...ps.map(p => p[k])) - 150) };
+  r.AABB = { Max: [0, 1, 2].map(k => _mx(ps.map(p => p[k])) + 150), Min: [0, 1, 2].map(k => _mn(ps.map(p => p[k])) - 150) };
   if (spec.space) setSpaceSky(r, true, H);
   return { bytes: wbyml(doc, r, true), routeHashes: r.Rails.filter(rl => rl.Name === 'RoutePathGraph').flatMap(rl => rl.Points.map(p => p.Hash.v)) };
 }
@@ -351,12 +356,13 @@ function courseFromDoc(bytes, spec) {
     const mine = rl => { if (!made) return true; const p = rl.Points?.[0]?.Translation; if (!p) return true; const q = p.map(nv); return made.some(m => Math.hypot(m[0] - q[0], m[1] - q[1], m[2] - q[2]) < 10); };
     r.Rails = [...(r.Rails || []).filter(rl => rl.Name !== 'GlidePath' || !mine(rl)), ...glideRails(spec, H)]; }
   if (spec.railPaths) r.Rails = [...(r.Rails || []).filter(rl => rl.Name !== 'RailSlidePath'), ...slideRails(spec, H)];   // and its rail paths
+  if (spec.gravityPaths?.length || spec.gravityCamPaths?.length) r.Rails = [...(r.Rails || []).filter(rl => !/^Gravity(Camera)?Path$/.test(rl.Name)), ...gravityRails(spec, H)];
   const ca = {}; for (const a of actors) ca[a.Name] = T.i32((ca[a.Name]?.v || 0) + 1); r.CountActor = ca;
   const cr = {}; for (const rl of r.Rails || []) cr[rl.Name] = T.i32((cr[rl.Name]?.v || 0) + 1); r.CountRail = cr;
   r.Collects = { ...(r.Collects || {}), Coin: T.i32(actors.filter(a => a.Name === 'CmnObj_Coin000_A_00').length) };
   const num = v => (v && typeof v === 'object' && 'v' in v) ? Number(v.v) : Number(v);
   const ps = [...actors.map(a => a.Translate), ...(r.Rails || []).filter(rl => rl.Name === 'LapPathGraph').flatMap(rl => rl.Points.map(p => p.Translation)), ...(spec.extent || [])].filter(Boolean).map(p => p.map(num));
-  r.AABB = { Max: [0, 1, 2].map(k => Math.fround(Math.max(...ps.map(p => p[k])) + 150)), Min: [0, 1, 2].map(k => Math.fround(Math.min(...ps.map(p => p[k])) - 150)) };
+  r.AABB = { Max: [0, 1, 2].map(k => Math.fround(_mx(ps.map(p => p[k])) + 150)), Min: [0, 1, 2].map(k => Math.fround(_mn(ps.map(p => p[k])) - 150)) };
   if (spec.space !== undefined) setSpaceSky(r, spec.space, H);
   return { bytes: wbyml(doc, r, true), routeHashes: (r.Rails || []).filter(rl => rl.Name === 'RoutePathGraph').flatMap(rl => rl.Points.map(p => p.Hash.v)) };
 }
@@ -539,7 +545,7 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
     for (const rl of r.Rails || []) for (const p of rl.Points) { p.Translation = place(p.Translation); if (p.Rotate) p.Rotate = turn(p.Rotate); }
     const ca = {}; for (const a of r.Actors) ca[a.Name] = T.i32((ca[a.Name]?.v || 0) + 1); r.CountActor = ca;
     const ps = [...r.Actors.filter(a => a.Translate).map(a => a.Translate.map(num)), ...objs.map(a => place(a.Translate))];
-    if (ps.length) r.AABB = { Max: [0, 1, 2].map(k => Math.fround(Math.max(...ps.map(p => p[k])) + 150)), Min: [0, 1, 2].map(k => Math.fround(Math.min(...ps.map(p => p[k])) - 150)) };
+    if (ps.length) r.AABB = { Max: [0, 1, 2].map(k => Math.fround(_mx(ps.map(p => p[k])) + 150)), Min: [0, 1, 2].map(k => Math.fround(_mn(ps.map(p => p[k])) - 150)) };
     const st = r.Actors.find(a => a.Name === 'StartPosition' && !a.Dynamic?.StartPositionId) || r.Actors.find(a => a.Name === 'StartPosition');
     return { bytes: wbyml(cdoc, r, true), objs, start: st ? st.Translate.map(num) : [fr.x, fr.y, fr.z], startRot: st?.Rotate ? st.Rotate.map(num) : [0, fr.yaw || 0, 0] };
   };
@@ -636,7 +642,7 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
     const tpos = k => [Math.fround(-fw[0] * 30 + side[0] * (k ? -12 : 12)), 2.5, Math.fround(-fw[1] * 30 + side[1] * (k ? -12 : 12))];
     const tun = tunnels.map((t, k) => ({ ...t, Hash: T.u64(H()), InstanceId: uuid(), ParentPrefab: PF, Rotate: tunnelRot(yaw), SRTHash: T.u32(rnd32()), Translate: tpos(k) }));
     const ps = [...objs.map(a => a.Translate), ...tun.map(a => a.Translate), ...(spec.extent || []).map(rel)];   // the model's own corners too (a big terrain reaches far past its objects)
-    const mn = [0, 1, 2].map(k => Math.min(...ps.map(p => p[k]))), mx = [0, 1, 2].map(k => Math.max(...ps.map(p => p[k])));
+    const mn = [0, 1, 2].map(k => _mn(ps.map(p => p[k]))), mx = [0, 1, 2].map(k => _mx(ps.map(p => p[k])));
     const box = { ...area, Hash: T.u64(H()), InstanceId: uuid(), ParentPrefab: PF, SRTHash: T.u32(rnd32()),
       Scale: [0, 1, 2].map(k => Math.fround((mx[k] - mn[k]) / 2 + (k === 1 ? 200 : 400))), Translate: [0, 1, 2].map(k => Math.fround((mx[k] + mn[k]) / 2)) };
     ir.Actors = [box, ...tun, ...objs];
@@ -793,7 +799,7 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
     if (cube0 && pt0) {
       const pts = [...src.map(a => place(a.Translate)), ...(worldStart ? [worldStart] : [])];
       for (const rl of pbyml(banc.bytes).root.Rails || []) for (const q of rl.Points) pts.push(q.Translation.map(num));
-      const mn = [0, 1, 2].map(k => Math.min(...pts.map(q => num(q[k])))), mx = [0, 1, 2].map(k => Math.max(...pts.map(q => num(q[k]))));
+      const mn = [0, 1, 2].map(k => _mn(pts.map(q => num(q[k])))), mx = [0, 1, 2].map(k => _mx(pts.map(q => num(q[k]))));
       const mid = [0, 1, 2].map(k => Math.fround((mn[k] + mx[k]) / 2)), half = [Math.fround((mx[0] - mn[0]) / 2 + 60), Math.fround(Math.max(150, (mx[1] - mn[1]) / 2 + 100)), Math.fround((mx[2] - mn[2]) / 2 + 60)];
       const hp = H(), hc = H(), st = worldStart || mid;
       // every real course point sits in a course's object group (ParentPrefab); one without it took over every Free Roam warp.
@@ -812,8 +818,8 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
     {
       const pts = [...src.map(a => place(a.Translate)), ...(worldStart ? [worldStart] : [])];
       for (const rl of pbyml(banc.bytes).root.Rails || []) for (const q of rl.Points) pts.push(q.Translation.map(num));
-      const M = 120, tmn = [Math.min(...pts.map(q => num(q[0]))) - M, Math.min(...pts.map(q => num(q[2]))) - M], tmx = [Math.max(...pts.map(q => num(q[0]))) + M, Math.max(...pts.map(q => num(q[2]))) + M];
-      const ty0 = Math.min(...pts.map(q => num(q[1]))) - 60, ty1 = Math.max(...pts.map(q => num(q[1]))) + 200;
+      const M = 120, tmn = [_mn(pts.map(q => num(q[0]))) - M, _mn(pts.map(q => num(q[2]))) - M], tmx = [_mx(pts.map(q => num(q[0]))) + M, _mx(pts.map(q => num(q[2]))) + M];
+      const ty0 = _mn(pts.map(q => num(q[1]))) - 60, ty1 = _mx(pts.map(q => num(q[1]))) + 200;
       const corners = [[tmn[0], tmn[1]], [tmx[0], tmn[1]], [tmx[0], tmx[1]], [tmn[0], tmx[1]]];
       let trimmed = 0, removed = 0;
       w.Actors = w.Actors.filter(a => {
@@ -823,7 +829,7 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
         const yaw = Math.abs(R[0]) > 3 && Math.abs(R[2]) > 3 ? Math.PI - R[1] : R[1], c = Math.cos(yaw), sn = Math.sin(yaw);
         // the track's footprint in the box's own axes (local x = (cos, -sin), local z = (sin, cos))
         const L = corners.map(([x, z]) => [(x - t[0]) * c - (z - t[2]) * sn, (x - t[0]) * sn + (z - t[2]) * c]);
-        const lo = [Math.min(...L.map(q => q[0])), Math.min(...L.map(q => q[1]))], hi = [Math.max(...L.map(q => q[0])), Math.max(...L.map(q => q[1]))];
+        const lo = [_mn(L.map(q => q[0])), _mn(L.map(q => q[1]))], hi = [_mx(L.map(q => q[0])), _mx(L.map(q => q[1]))];
         if (hi[0] < -h[0] || lo[0] > h[0] || hi[1] < -h[2] || lo[1] > h[2]) return true;   // doesn't touch it
         // the four ways to cut it back: keep the part beyond the track on one side
         const opts = [[0, hi[0], h[0]], [0, -h[0], lo[0]], [1, hi[1], h[2]], [1, -h[2], lo[1]]].map(([ax, a0, a1]) => ({ ax, a0, a1, keep: (a1 - a0) / (2 * (ax ? h[2] : h[0])) }));
@@ -871,7 +877,7 @@ export async function buildNewSlot(rd, spec, progress = () => {}) {
     if (fr.clear !== false) {
       const P = [...src.map(a => place(a.Translate)), ...(worldStart ? [worldStart] : []), ...moved.flatMap(rl => rl.Points.map(q => q.Translation.map(num)))];
       for (const rl of pbyml(banc.bytes).root.Rails || []) for (const q of rl.Points) P.push(q.Translation.map(num));
-      const lo = [Math.min(...P.map(q => num(q[0]))) - 150, Math.min(...P.map(q => num(q[2]))) - 150], hi = [Math.max(...P.map(q => num(q[0]))) + 150, Math.max(...P.map(q => num(q[2]))) + 150];
+      const lo = [_mn(P.map(q => num(q[0]))) - 150, _mn(P.map(q => num(q[2]))) - 150], hi = [_mx(P.map(q => num(q[0]))) + 150, _mx(P.map(q => num(q[2]))) + 150];
       const inside = a => { if (!a.Translate) return false; const x = num(a.Translate[0]), z = num(a.Translate[2]); return x >= lo[0] && x <= hi[0] && z >= lo[1] && z <= hi[1]; };
       const mine = new Set(); const clearable = a => /^SystemObj_AutoGenerate\w*SlatePoint/.test(a.Name || '') || /^(CmnObj|EditObj|EffectObj)_/.test(a.Name || '');
       let gone = 0;

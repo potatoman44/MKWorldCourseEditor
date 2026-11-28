@@ -113,7 +113,7 @@ dialog::backdrop { background:#000a; }
 </head>
 <body>
 <div id="top">
-  <div class="brand" title="Version 1.8: terrain editor (ground materials, colours and collision) and track pack creator">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.8</span></div>
+  <div class="brand" title="Version 1.9 test 1: convert Mario Kart 8 Deluxe courses (Track Creator → Model → MK8 Deluxe course…)">MK <i>World</i> Course Editor <span style="color:var(--dim);font-weight:500;font-size:11px">v1.9 test 1</span></div>
   <div class="menu" id="filemenu"><button id="filebtn" title="Open your dump, open a course file, save your edits as a mod">File ▾</button>
     <div class="menupop">
       <button id="openRomfs" title="The game's romfs folder from your dump">Open RomFS…</button><button id="openBase" title="Optional: the base game's romfs (version 1.0). An update's romfs only has the files that changed, so objects whose models never changed (most open-world scenery, like the Toad houses) need the base game's files to show their models.">Base game…</button>
@@ -188,7 +188,7 @@ dialog::backdrop { background:#000a; }
       <div data-ws="model">
       <div class="tgrid"><span>Road from</span><select id="tc_src"><option value="gen">Built from the centre line</option><option value="import">My own model (OBJ / FBX / DAE)</option></select></div>
         <div id="tc_imp" style="display:none">
-        <div class="qbtns"><button id="tc_vis" class="hot" title="The model you see. Pick its .mtl and texture images along with it (select them all in the file window)">Import model…</button><button id="tc_addtex" title="Pick texture images (and the .mtl) you didn't select when you imported the model. They're matched to its materials by file name.">Add textures…</button></div>
+        <div class="qbtns"><button id="tc_vis" class="hot" title="The model you see. Pick its .mtl and texture images along with it (select them all in the file window)">Import model…</button><button id="tc_addtex" title="Pick texture images (and the .mtl) you didn't select when you imported the model. They're matched to its materials by file name.">Add textures…</button><button id="tc_mk8" title="Convert a Mario Kart 8 Deluxe course: pick course_model.szs, course_kcl.szs and course_muunt.byaml from its folder (Course/&lt;name&gt;) together. Its model, collision, lap path, CPU route, item boxes, coins, glide and anti-gravity paths come across">MK8 Deluxe course…</button></div>
         <div id="tc_impinfo" class="hint"></div>
           <div class="qsec">Placement</div>
         <div class="qgrid"><span>Scale</span><input id="tc_sc" type="number" value="1" step="0.1" min="0.0001"><span>Turn (°)</span><input id="tc_rot" type="number" value="0" step="90"></div>
@@ -207,7 +207,7 @@ dialog::backdrop { background:#000a; }
         <div class="qbtns"><select id="tc_presetkind" style="flex:1"></select><button id="tc_presetadd">Add</button></div>
         <div id="tc_presetlist"></div>
         </div>
-      <input id="tc_visfile" type="file" multiple accept=".obj,.fbx,.dae,.mtl,.png,.jpg,.jpeg,.bmp,.gif,.webp,.tga" hidden><input id="tc_colfile" type="file" multiple accept=".obj,.fbx,.dae,.mtl" hidden><input id="tc_addtexfile" type="file" multiple accept=".mtl,.png,.jpg,.jpeg,.bmp,.gif,.webp,.tga" hidden><input id="tc_texfile" type="file" accept=".png,.jpg,.jpeg,.bmp,.gif,.webp,.tga" hidden>
+      <input id="tc_mk8file" type="file" multiple accept=".szs,.byaml" hidden><input id="tc_visfile" type="file" multiple accept=".obj,.fbx,.dae,.mtl,.png,.jpg,.jpeg,.bmp,.gif,.webp,.tga" hidden><input id="tc_colfile" type="file" multiple accept=".obj,.fbx,.dae,.mtl" hidden><input id="tc_addtexfile" type="file" multiple accept=".mtl,.png,.jpg,.jpeg,.bmp,.gif,.webp,.tga" hidden><input id="tc_texfile" type="file" accept=".png,.jpg,.jpeg,.bmp,.gif,.webp,.tga" hidden>
       <div class="qsec gen-only2">Centre line <span id="tc_ptinfo" class="hint"></span></div>
       <div class="qbtns gen-hide"><button id="tc_add" title="Then click the ground: the point goes into the nearest part of the loop">Add points</button><button id="tc_del" title="Delete the selected point (Delete key)">Delete point</button><button id="tc_undo" title="Ctrl+Z">Undo</button><button id="tc_reset" title="Start again from the default oval">Reset</button></div>
       <div class="tgrid gen-hide"><span>Point height</span><span style="display:flex;gap:4px"><input id="tc_h" type="number" step="0.5" value="0" style="flex:1;min-width:0" title="Height of the selected point above the start line (m)"><button id="tc_sink" title="Put the selected point under the water (4 m below the water level). Needs the track placed in the open world.">Under water</button></span></div>

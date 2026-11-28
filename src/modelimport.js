@@ -303,7 +303,7 @@ export function packParts(visual, collision, map, xfV, xfC, cap, texOf = () => n
     const all = [], vp = vparts[i] || new Map();
     for (const ch of vp.values()) for (const v of ch.V) all.push(v[0]);
     if (colChunks[i]) for (const [t] of colChunks[i]) all.push(...t);
-    const mn = [0, 1, 2].map(a => Math.min(...all.map(p => p[a]))), mx = [0, 1, 2].map(a => Math.max(...all.map(p => p[a])));
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity]; for (const p of all) for (let a = 0; a < 3; a++) { if (p[a] < mn[a]) mn[a] = p[a]; if (p[a] > mx[a]) mx[a] = p[a]; }
     const local = [0, 1, 2].map(a => (mn[a] + mx[a]) / 2), L = p => [p[0] - local[0], p[1] - local[1], p[2] - local[2]];
     const geom = {}, tex = {};
     for (const [slot, ch] of vp) { geom[slot] = [ch.V.map(([p, nr, uv]) => [L(p), nr, uv]), ch.tris]; if (ch.tex) tex[slot] = ch.tex; }

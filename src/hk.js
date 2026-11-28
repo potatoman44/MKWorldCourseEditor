@@ -1,3 +1,4 @@
+const _mn = a => { let m = Infinity; for (const v of a) if (v < m) m = v; return m; }, _mx = a => { let m = -Infinity; for (const v of a) if (v > m) m = v; return m; };   // Math.min/max(...a) without the argument limit
 // Havok (Phive) collision writer for Mario Kart World: builds a standalone .bphsh (hknpMeshShape) from triangles.
 // Port of the tested Python tools (bphsh.py / meshenc.py / inplace.py).
 
@@ -64,7 +65,7 @@ function splitBig(tris, maxext = 100) {
 }
 function mortonSort(tris) {
   const cs = tris.map(([t]) => [0, 1, 2].map(a => (t[0][a] + t[1][a] + t[2][a]) / 3));
-  const mn = [0, 1, 2].map(a => Math.min(...cs.map(c => c[a]))), mx = [0, 1, 2].map(a => Math.max(...cs.map(c => c[a])));
+  const mn = [0, 1, 2].map(a => _mn(cs.map(c => c[a]))), mx = [0, 1, 2].map(a => _mx(cs.map(c => c[a])));
   const key = c => { const q = [0, 1, 2].map(a => Math.trunc((c[a] - mn[a]) / ((mx[a] - mn[a]) || 1) * 1023)); let k = 0n;
     for (let bit = 0; bit < 10; bit++) for (const a of [0, 2, 1]) k = (k << 1n) | BigInt((q[a] >> (9 - bit)) & 1); return k; };
   const keys = cs.map(key);
@@ -81,7 +82,7 @@ function buildSimdTree(boxes) {
     let groups;
     if (items.length <= 4) groups = [items];
     else {
-      const ext = [0, 1, 2].map(a => Math.max(...items.map(i => boxes[i][1][a])) - Math.min(...items.map(i => boxes[i][0][a])));
+      const ext = [0, 1, 2].map(a => _mx(items.map(i => boxes[i][1][a])) - _mn(items.map(i => boxes[i][0][a])));
       const ax = argmaxFirst(ext), srt = items.slice().sort((i, j) => (boxes[i][0][ax] + boxes[i][1][ax]) - (boxes[j][0][ax] + boxes[j][1][ax]));
       let cap = 4; while (cap * 4 < srt.length) cap *= 4;
       groups = []; for (let k = 0; k < srt.length; k += cap) groups.push(srt.slice(k, k + cap));
@@ -96,7 +97,7 @@ function buildSimdTree(boxes) {
   return nodes;
 }
 function writeSimdNodes(blob, p, nodes, boxes) {
-  const gbox = items => [[0, 1, 2].map(a => Math.min(...items.map(i => boxes[i][0][a]))), [0, 1, 2].map(a => Math.max(...items.map(i => boxes[i][1][a])))];
+  const gbox = items => [[0, 1, 2].map(a => _mn(items.map(i => boxes[i][0][a]))), [0, 1, 2].map(a => _mx(items.map(i => boxes[i][1][a])))];
   nodes.forEach((nd, n) => {
     const q = p + 128 * n;
     let lanes = [];
@@ -116,10 +117,10 @@ function leafOrder(items) { const o = items.slice().sort((a, b) => a - b); retur
 function buildBvh8(boxes) {
   const nodes = [];
   const cen = (i, a) => boxes[i][a][0] + boxes[i][a][1];
-  const ubox = items => [0, 1, 2].map(a => [Math.min(...items.map(i => boxes[i][a][0])), Math.max(...items.map(i => boxes[i][a][1]))]);
+  const ubox = items => [0, 1, 2].map(a => [_mn(items.map(i => boxes[i][a][0])), _mx(items.map(i => boxes[i][a][1]))]);
   const split = items => {
     if (items.length <= 4) return items.map(i => [i]);
-    const ext = [0, 1, 2].map(a => Math.max(...items.map(i => cen(i, a))) - Math.min(...items.map(i => cen(i, a))));
+    const ext = [0, 1, 2].map(a => _mx(items.map(i => cen(i, a))) - _mn(items.map(i => cen(i, a))));
     const ax = argmaxFirst(ext), s = items.slice().sort((i, j) => cen(i, ax) - cen(j, ax));
     let cap = 4; while (cap * 4 < s.length) cap *= 4;
     const groups = []; for (let k = 0; k < s.length; k += cap) groups.push(s.slice(k, k + cap));
@@ -156,7 +157,7 @@ function encodeMesh(blob, tris, headerSrc, items, TI, opt) {
     const tmn = [0, 1, 2].map(a => Math.min(t[0][0][a], t[0][1][a], t[0][2][a])), tmx = [0, 1, 2].map(a => Math.max(t[0][0][a], t[0][1][a], t[0][2][a]));
     if (cur.length) {
       const nmn = [0, 1, 2].map(a => Math.min(cmn[a], tmn[a])), nmx = [0, 1, 2].map(a => Math.max(cmx[a], tmx[a]));
-      if (cur.length < 4 && Math.max(...[0, 1, 2].map(a => nmx[a] - nmn[a])) <= 120) { cur.push(t); cmn = nmn; cmx = nmx; continue; }
+      if (cur.length < 4 && _mx([0, 1, 2].map(a => nmx[a] - nmn[a])) <= 120) { cur.push(t); cmn = nmn; cmx = nmx; continue; }
       secs.push(cur);
     }
     cur = [t]; cmn = tmn; cmx = tmx;
@@ -181,9 +182,9 @@ function encodeMesh(blob, tris, headerSrc, items, TI, opt) {
       const ids = t.map(v => { const q = [0, 1, 2].map(a => roundEven(v[a] * 512)), k = q.join(','); if (!vi.has(k)) { vi.set(k, V.length); V.push(q); } return vi.get(k); });
       P.push([ids[0], ids[1], ids[2], ids[2]]);
     }
-    const off = [0, 1, 2].map(a => Math.min(...V.map(v => v[a])));
+    const off = [0, 1, 2].map(a => _mn(V.map(v => v[a])));
     for (const v of V) for (let a = 0; a < 3; a++) if (!(v[a] - off[a] >= 0 && v[a] - off[a] < 65536)) throw new Error('collision section too big');
-    const lmn = off.map(o => o / 512), lmx = [0, 1, 2].map(a => Math.max(...V.map(v => v[a])) / 512);
+    const lmn = off.map(o => o / 512), lmx = [0, 1, 2].map(a => _mx(V.map(v => v[a])) / 512);
     sboxes.push([lmn.map(x => x - opt.boxPad), lmx.map(x => x + opt.boxPad)]);
     const s8 = [], bo = [];
     for (let a = 0; a < 3; a++) {
@@ -192,7 +193,7 @@ function encodeMesh(blob, tris, headerSrc, items, TI, opt) {
     }
     const f32 = x => Math.fround(x);
     const pboxes = P.map(([i0, i1, i2]) => [0, 1, 2].map(a => { const ws = [...new Set([i0, i1, i2])].map(i => V[i][a] / 512);
-      return [Math.max(0, Math.min(255, Math.floor(Math.min(...ws) / s8[a]) - bo[a] - 1)), Math.max(0, Math.min(255, Math.ceil(Math.max(...ws) / s8[a]) - bo[a] + 1))]; }));
+      return [Math.max(0, Math.min(255, Math.floor(_mn(ws) / s8[a]) - bo[a] - 1)), Math.max(0, Math.min(255, Math.ceil(_mx(ws) / s8[a]) - bo[a] + 1))]; }));
     const [nb, nn] = buildBvh8(pboxes);
     const bv = blob.alloc(28 * nn, 4); blob.raw(bv, nb); items.push([0x20, TI.node8, bv, nn]);
     const pr = blob.alloc(4 * P.length, 4); items.push([0x20, TI.prim, pr, P.length]);
@@ -210,7 +211,7 @@ function encodeMesh(blob, tris, headerSrc, items, TI, opt) {
   writeSimdNodes(blob, tp, nodes, sboxes);
   blob.i64(ms + 0x78, tp - (ms + 0x78)); blob.i32(ms + 0x80, nodes.length); blob.u32(ms + 0x84, 0); blob.u32(ms + 0x88, 0); blob.u32(ms + 0x8c, 1);
   blob.i64(ms + 0x98, 0);
-  const mn = [0, 1, 2].map(a => Math.min(...sboxes.map(b => b[0][a]))), mx = [0, 1, 2].map(a => Math.max(...sboxes.map(b => b[1][a])));
+  const mn = [0, 1, 2].map(a => _mn(sboxes.map(b => b[0][a]))), mx = [0, 1, 2].map(a => _mx(sboxes.map(b => b[1][a])));
   return { ms, mn, mx, sections: ns, tris: tris.length };
 }
 

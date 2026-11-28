@@ -48,6 +48,7 @@ export const BRUSHES = [
   { id:'water',          label:'Water',                 mat:M('Water'),    sub:S('Water'),    mask:0,   color:'#40b0ff' },
   { id:'shallows',       label:'Shallow water',         mat:M('Shallows'), sub:S('Water'),    mask:0,   color:'#80d0ff' },
   { id:'lava',           label:'Lava',                  mat:M('Lava'),     sub:S('Lava'),     mask:0,   color:'#ff3000' },
+  { id:'rescue',         label:'Out of bounds (Lakitu)', mat:M('Rescue'),  sub:S('Undefined'),mask:0,   color:'#806040' },
   { id:'fall',           label:'Fall-out zone',         mat:M('Fall'),     sub:S('Undefined'),mask:0,   color:'#000000' },
   { id:'wall_concrete',  label:'Wall – concrete/stone', mat:M('Wall'),     sub:S('Concrete'), mask:0,   color:'#d04040', seen:true },
   { id:'wall_iron',      label:'Wall – metal',          mat:M('Wall'),     sub:S('Iron'),     mask:0,   color:'#c03050', seen:true },
