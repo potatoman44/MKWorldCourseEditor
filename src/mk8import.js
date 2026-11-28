@@ -216,7 +216,7 @@ export function mk8Surface(attr) {
   if (t >= 17 && t <= 22) return 'wall_concrete';
   if (t === 23 || t === 24) return 'invisible_wall';
   if (t === 28 || t === 29) return 'fall';
-  if (t === 31) return v === 0 ? 'glide' : 'grass';
+  if (t >= 30) return null;            // effect / sound triggers (flower beds, the glide panel's trigger): not solid, left out
   return 'road_asphalt';
 }
 const V3 = o => [o.X, o.Y, o.Z];
@@ -243,7 +243,7 @@ export function convertMk8(files, opt = {}) {
   const R = o => [o.X, o.Y, o.Z].map(Math.fround);
   // ---- collision
   const k = readKcl(yaz0(files.kcl)), byS = new Map();
-  for (let i = 0; i < k.attr.length; i++) { const s = mk8Surface(k.attr[i]); if (!byS.has(s)) byS.set(s, []); byS.get(s).push(i); }
+  for (let i = 0; i < k.attr.length; i++) { const s = mk8Surface(k.attr[i]); if (!s) continue; if (!byS.has(s)) byS.set(s, []); byS.get(s).push(i); }
   let col = '# Mario Kart 8 Deluxe collision, converted\n', vi = 1;
   const kp = i => T([k.pos[i], k.pos[i + 1], k.pos[i + 2]]);
   for (const [s, list] of byS) {
@@ -251,7 +251,7 @@ export function convertMk8(files, opt = {}) {
     for (const i of list) { for (let c = 0; c < 3; c++) { const p = kp(9 * i + 3 * c); col += `v ${p[0].toFixed(3)} ${p[1].toFixed(3)} ${p[2].toFixed(3)}\n`; } col += `f ${vi} ${vi + 1} ${vi + 2}\n`; vi += 3; }
   }
   // road height under a point (for the start grid)
-  const roadTris = []; for (let i = 0; i < k.attr.length; i++) if (/^road/.test(mk8Surface(k.attr[i]))) roadTris.push(i);
+  const roadTris = []; for (let i = 0; i < k.attr.length; i++) if (/^road/.test(mk8Surface(k.attr[i]) || '')) roadTris.push(i);
   const groundAt = (x, z, y0) => { let best = null;
     for (const i of roadTris) { const a = kp(9 * i), b = kp(9 * i + 3), c = kp(9 * i + 6);
       const d = (b[2] - c[2]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[2] - c[2]); if (Math.abs(d) < 1e-9) continue;
